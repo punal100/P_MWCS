@@ -1,5 +1,7 @@
 #include "MWCS_SpecParser.h"
 
+#include "MWCS_Settings.h"
+
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -25,6 +27,181 @@ static bool ReadIntField(const TSharedPtr<FJsonObject> &Obj, const TCHAR *Field,
         return false;
     }
     Out = static_cast<int32>(Number);
+    return true;
+}
+
+static bool ReadVersionField(const TSharedPtr<FJsonObject> &Obj, const TCHAR *Field, FString &Out)
+{
+    if (!Obj.IsValid())
+    {
+        return false;
+    }
+
+    FString VersionString;
+    if (Obj->TryGetStringField(Field, VersionString))
+    {
+        Out = VersionString;
+        return true;
+    }
+
+    double VersionNumber = 0.0;
+    if (Obj->TryGetNumberField(Field, VersionNumber))
+    {
+        // Preserve integer-ish values without trailing .0 where possible.
+        const int64 AsInt = static_cast<int64>(VersionNumber);
+        if (FMath::IsNearlyEqual(VersionNumber, static_cast<double>(AsInt)))
+        {
+            Out = FString::Printf(TEXT("%lld"), AsInt);
+        }
+        else
+        {
+            Out = FString::SanitizeFloat(VersionNumber);
+        }
+        return true;
+    }
+
+    return false;
+}
+
+static bool TryParseSizeObject(const TSharedPtr<FJsonObject> &Obj, const TCHAR *Field, FVector2D &Out)
+{
+    if (!Obj.IsValid())
+    {
+        return false;
+    }
+
+    const TSharedPtr<FJsonObject> *SizeObjPtr = nullptr;
+    if (!Obj->TryGetObjectField(Field, SizeObjPtr) || !SizeObjPtr || !SizeObjPtr->IsValid())
+    {
+        return false;
+    }
+
+    const TSharedPtr<FJsonObject> SizeObj = *SizeObjPtr;
+
+    double W = 0.0;
+    double H = 0.0;
+    const bool bHasW = SizeObj->TryGetNumberField(TEXT("Width"), W) || SizeObj->TryGetNumberField(TEXT("X"), W);
+    const bool bHasH = SizeObj->TryGetNumberField(TEXT("Height"), H) || SizeObj->TryGetNumberField(TEXT("Y"), H);
+    if (!bHasW || !bHasH)
+    {
+        return false;
+    }
+
+    Out = FVector2D(static_cast<float>(W), static_cast<float>(H));
+    return true;
+}
+
+static bool TryParseIntFieldFlexible(const TSharedPtr<FJsonObject> &Obj, const TCHAR *Field, int32 &Out)
+{
+    if (!Obj.IsValid())
+    {
+        return false;
+    }
+
+    // Number
+    double Number = 0.0;
+    if (Obj->TryGetNumberField(Field, Number))
+    {
+        Out = static_cast<int32>(Number);
+        return true;
+    }
+
+    // String
+    FString Str;
+    if (Obj->TryGetStringField(Field, Str))
+    {
+        int32 Parsed = 0;
+        if (LexTryParseString(Parsed, *Str))
+        {
+            Out = Parsed;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void AddIssue(FMWCS_Report &Report, EMWCS_IssueSeverity Severity, const FString &Code, const FString &Message, const FString &Context);
+
+static bool ParseDesignerPreview(const TSharedPtr<FJsonObject> &RootObj, FMWCS_DesignerPreview &Out, FMWCS_Report &Report, const FString &Context)
+{
+    // Defaults
+    Out.SizeMode = EMWCS_PreviewSizeMode::FillScreen;
+    Out.CustomSize = FVector2D::ZeroVector;
+    Out.ZoomLevel = 14;
+    Out.bShowGrid = true;
+
+    if (!RootObj.IsValid())
+    {
+        return true;
+    }
+
+    const UMWCS_Settings *Settings = UMWCS_Settings::Get();
+    const int32 ZoomMin = Settings ? Settings->DesignerZoomLevelMin : 0;
+    const int32 ZoomMax = Settings ? Settings->DesignerZoomLevelMax : 20;
+
+    auto ClampZoom = [&](int32 InZoom)
+    {
+        const int32 Clamped = FMath::Clamp(InZoom, ZoomMin, ZoomMax);
+        if (Clamped != InZoom)
+        {
+            AddIssue(Report, EMWCS_IssueSeverity::Warning, TEXT("DesignerPreview.ZoomOutOfRange"),
+                     FString::Printf(TEXT("ZoomLevel %d clamped to [%d, %d]."), InZoom, ZoomMin, ZoomMax),
+                     Context);
+        }
+        Out.ZoomLevel = Clamped;
+    };
+
+    // Root DesignerPreview section.
+    const TSharedPtr<FJsonObject> *PreviewObjPtr = nullptr;
+    if (RootObj->TryGetObjectField(TEXT("DesignerPreview"), PreviewObjPtr) && PreviewObjPtr && PreviewObjPtr->IsValid())
+    {
+        const TSharedPtr<FJsonObject> PreviewObj = *PreviewObjPtr;
+
+        FString ModeStr;
+        if (PreviewObj->TryGetStringField(TEXT("SizeMode"), ModeStr))
+        {
+            if (ModeStr.Equals(TEXT("FillScreen"), ESearchCase::IgnoreCase) || ModeStr.Equals(TEXT("Fill Screen"), ESearchCase::IgnoreCase))
+                Out.SizeMode = EMWCS_PreviewSizeMode::FillScreen;
+            else if (ModeStr.Equals(TEXT("Desired"), ESearchCase::IgnoreCase))
+                Out.SizeMode = EMWCS_PreviewSizeMode::Desired;
+            else if (ModeStr.Equals(TEXT("DesiredOnScreen"), ESearchCase::IgnoreCase) || ModeStr.Equals(TEXT("Desired On Screen"), ESearchCase::IgnoreCase))
+                Out.SizeMode = EMWCS_PreviewSizeMode::DesiredOnScreen;
+            else if (ModeStr.Equals(TEXT("Custom"), ESearchCase::IgnoreCase))
+                Out.SizeMode = EMWCS_PreviewSizeMode::Custom;
+            else
+                Out.SizeMode = EMWCS_PreviewSizeMode::FillScreen;
+        }
+
+        FVector2D CustomSize;
+        if (TryParseSizeObject(PreviewObj, TEXT("CustomSize"), CustomSize))
+        {
+            Out.CustomSize = CustomSize;
+        }
+
+        int32 Zoom = 0;
+        if (TryParseIntFieldFlexible(PreviewObj, TEXT("ZoomLevel"), Zoom))
+        {
+            ClampZoom(Zoom);
+        }
+
+        PreviewObj->TryGetBoolField(TEXT("ShowGrid"), Out.bShowGrid);
+
+        // Hard validation for Custom mode
+        if (Out.SizeMode == EMWCS_PreviewSizeMode::Custom)
+        {
+            if (Out.CustomSize.X <= 0.0f || Out.CustomSize.Y <= 0.0f)
+            {
+                AddIssue(Report, EMWCS_IssueSeverity::Error, TEXT("DesignerPreview.InvalidCustomSize"),
+                         TEXT("Custom preview size must be positive when SizeMode is Custom."),
+                         Context);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     return true;
 }
 
@@ -72,8 +249,43 @@ static bool ParseBindings(const TSharedPtr<FJsonObject> &RootObj, FMWCS_Bindings
         }
     };
 
-    ParseStringArray(*BindingsObj, TEXT("Required"), OutBindings.Required);
-    ParseStringArray(*BindingsObj, TEXT("Optional"), OutBindings.Optional);
+    auto ParseStringArrayWithTypes = [&OutBindings](const TSharedPtr<FJsonObject> &Obj, const TCHAR *Field, TArray<FName> &OutArr)
+    {
+        const TArray<TSharedPtr<FJsonValue>> *Values = nullptr;
+        if (!Obj->TryGetArrayField(Field, Values) || !Values)
+        {
+            return;
+        }
+        for (const TSharedPtr<FJsonValue> &V : *Values)
+        {
+            FString S;
+            if (V.IsValid() && V->TryGetString(S))
+            {
+                OutArr.Add(FName(*S));
+                continue;
+            }
+            if (V.IsValid() && V->Type == EJson::Object)
+            {
+                TSharedPtr<FJsonObject> ObjVal = V->AsObject();
+                FString Name;
+                if (ObjVal.IsValid() && ObjVal->TryGetStringField(TEXT("Name"), Name))
+                {
+                    const FName NameF(*Name);
+                    OutArr.Add(NameF);
+
+                    FString Type;
+                    if (ObjVal->TryGetStringField(TEXT("Type"), Type) && !Type.IsEmpty())
+                    {
+                        OutBindings.Types.Add(NameF, Type);
+                    }
+                }
+            }
+        }
+    };
+
+    // Backwards-compatible parsing (strings or objects). Also capture per-binding type hints when present.
+    ParseStringArrayWithTypes(*BindingsObj, TEXT("Required"), OutBindings.Required);
+    ParseStringArrayWithTypes(*BindingsObj, TEXT("Optional"), OutBindings.Optional);
     return true;
 }
 
@@ -96,9 +308,340 @@ static bool ParseHierarchyNode(const TSharedPtr<FJsonObject> &NodeObj, FMWCS_Hie
         OutNode.Name = NAME_None;
     }
 
-    bool bIsVariable = true;
-    NodeObj->TryGetBoolField(TEXT("IsVariable"), bIsVariable);
-    OutNode.bIsVariable = bIsVariable;
+    // IMPORTANT:
+    // If IsVariable is omitted in JSON, preserve the struct default (true).
+    // Many specs (e.g. P_MiniFootball) rely on the default so BindWidget validation works.
+    bool bIsVariable = false;
+    if (NodeObj->TryGetBoolField(TEXT("IsVariable"), bIsVariable))
+    {
+        OutNode.bIsVariable = bIsVariable;
+    }
+
+    FString Text;
+    if (NodeObj->TryGetStringField(TEXT("Text"), Text))
+    {
+        OutNode.Text = Text;
+    }
+
+    FString WidgetClassPath;
+    if (NodeObj->TryGetStringField(TEXT("WidgetClass"), WidgetClassPath))
+    {
+        OutNode.WidgetClassPath = WidgetClassPath;
+    }
+
+    double FontSize = 0.0;
+    if (NodeObj->TryGetNumberField(TEXT("FontSize"), FontSize))
+    {
+        OutNode.FontSize = FMath::Max(0, static_cast<int32>(FontSize));
+    }
+
+    FString Justification;
+    if (NodeObj->TryGetStringField(TEXT("Justification"), Justification))
+    {
+        OutNode.Justification = Justification;
+    }
+
+    // Optional slot metadata
+    const TSharedPtr<FJsonObject> *SlotObjPtr = nullptr;
+    if (NodeObj->TryGetObjectField(TEXT("Slot"), SlotObjPtr) && SlotObjPtr && SlotObjPtr->IsValid())
+    {
+        const TSharedPtr<FJsonObject> SlotObj = *SlotObjPtr;
+
+        auto TryReadVec2 = [](const TSharedPtr<FJsonObject> &Obj, const TCHAR *Field, FVector2D &Out) -> bool
+        {
+            if (!Obj.IsValid())
+            {
+                return false;
+            }
+            const TSharedPtr<FJsonObject> *VecObjPtr = nullptr;
+            if (Obj->TryGetObjectField(Field, VecObjPtr) && VecObjPtr && VecObjPtr->IsValid())
+            {
+                double X = 0.0, Y = 0.0;
+                if ((*VecObjPtr)->TryGetNumberField(TEXT("X"), X) && (*VecObjPtr)->TryGetNumberField(TEXT("Y"), Y))
+                {
+                    Out = FVector2D(static_cast<float>(X), static_cast<float>(Y));
+                    return true;
+                }
+            }
+            const TArray<TSharedPtr<FJsonValue>> *Arr = nullptr;
+            if (Obj->TryGetArrayField(Field, Arr) && Arr && Arr->Num() == 2)
+            {
+                Out = FVector2D(static_cast<float>((*Arr)[0]->AsNumber()), static_cast<float>((*Arr)[1]->AsNumber()));
+                return true;
+            }
+            return false;
+        };
+
+        // Padding
+        const TArray<TSharedPtr<FJsonValue>> *PaddingArr = nullptr;
+        if (SlotObj->TryGetArrayField(TEXT("Padding"), PaddingArr) && PaddingArr && PaddingArr->Num() == 4)
+        {
+            auto NumAt = [&PaddingArr](int32 Index, double DefaultValue)
+            {
+                if (!PaddingArr->IsValidIndex(Index) || !(*PaddingArr)[Index].IsValid())
+                {
+                    return DefaultValue;
+                }
+                if ((*PaddingArr)[Index]->Type == EJson::Number)
+                {
+                    return (*PaddingArr)[Index]->AsNumber();
+                }
+                return DefaultValue;
+            };
+            OutNode.bHasSlotPadding = true;
+            OutNode.SlotPadding = FMargin(
+                static_cast<float>(NumAt(0, 0.0)),
+                static_cast<float>(NumAt(1, 0.0)),
+                static_cast<float>(NumAt(2, 0.0)),
+                static_cast<float>(NumAt(3, 0.0)));
+        }
+        else
+        {
+            const TSharedPtr<FJsonObject> *PaddingObjPtr = nullptr;
+            if (SlotObj->TryGetObjectField(TEXT("Padding"), PaddingObjPtr) && PaddingObjPtr && PaddingObjPtr->IsValid())
+            {
+                double L = 0, T = 0, R = 0, B = 0;
+                (*PaddingObjPtr)->TryGetNumberField(TEXT("Left"), L);
+                (*PaddingObjPtr)->TryGetNumberField(TEXT("Top"), T);
+                (*PaddingObjPtr)->TryGetNumberField(TEXT("Right"), R);
+                (*PaddingObjPtr)->TryGetNumberField(TEXT("Bottom"), B);
+                OutNode.bHasSlotPadding = true;
+                OutNode.SlotPadding = FMargin(static_cast<float>(L), static_cast<float>(T), static_cast<float>(R), static_cast<float>(B));
+            }
+        }
+
+        auto ParseHAlign = [](const FString &S, bool &bOutHas, EHorizontalAlignment &Out)
+        {
+            if (S.IsEmpty())
+            {
+                return;
+            }
+            bOutHas = true;
+            if (S.Equals(TEXT("Left"), ESearchCase::IgnoreCase))
+                Out = HAlign_Left;
+            else if (S.Equals(TEXT("Center"), ESearchCase::IgnoreCase))
+                Out = HAlign_Center;
+            else if (S.Equals(TEXT("Right"), ESearchCase::IgnoreCase))
+                Out = HAlign_Right;
+            else if (S.Equals(TEXT("Fill"), ESearchCase::IgnoreCase))
+                Out = HAlign_Fill;
+            else
+                bOutHas = false;
+        };
+
+        auto ParseVAlign = [](const FString &S, bool &bOutHas, EVerticalAlignment &Out)
+        {
+            if (S.IsEmpty())
+            {
+                return;
+            }
+            bOutHas = true;
+            if (S.Equals(TEXT("Top"), ESearchCase::IgnoreCase))
+                Out = VAlign_Top;
+            else if (S.Equals(TEXT("Center"), ESearchCase::IgnoreCase))
+                Out = VAlign_Center;
+            else if (S.Equals(TEXT("Bottom"), ESearchCase::IgnoreCase))
+                Out = VAlign_Bottom;
+            else if (S.Equals(TEXT("Fill"), ESearchCase::IgnoreCase))
+                Out = VAlign_Fill;
+            else
+                bOutHas = false;
+        };
+
+        FString HAlignStr;
+        if (SlotObj->TryGetStringField(TEXT("HAlign"), HAlignStr))
+        {
+            ParseHAlign(HAlignStr, OutNode.bHasSlotHAlign, OutNode.SlotHAlign);
+        }
+
+        FString VAlignStr;
+        if (SlotObj->TryGetStringField(TEXT("VAlign"), VAlignStr))
+        {
+            ParseVAlign(VAlignStr, OutNode.bHasSlotVAlign, OutNode.SlotVAlign);
+        }
+
+        // Size (HorizontalBox/VerticalBox slots)
+        // Supported forms:
+        //  - "Fill": 1.0
+        //  - "Size": 1.0            (treated as Fill)
+        //  - "Size": { "Rule": "Fill|Auto", "Value": 1.0 }
+        double FillValue = 0.0;
+        if (SlotObj->TryGetNumberField(TEXT("Fill"), FillValue))
+        {
+            OutNode.bHasSlotSize = true;
+            OutNode.SlotSizeRule = ESlateSizeRule::Fill;
+            OutNode.SlotSizeValue = static_cast<float>(FillValue);
+        }
+        else
+        {
+            double SizeNumber = 0.0;
+            if (SlotObj->TryGetNumberField(TEXT("Size"), SizeNumber))
+            {
+                OutNode.bHasSlotSize = true;
+                OutNode.SlotSizeRule = ESlateSizeRule::Fill;
+                OutNode.SlotSizeValue = static_cast<float>(SizeNumber);
+            }
+            else
+            {
+                const TSharedPtr<FJsonObject> *SizeObjPtr = nullptr;
+                if (SlotObj->TryGetObjectField(TEXT("Size"), SizeObjPtr) && SizeObjPtr && SizeObjPtr->IsValid())
+                {
+                    FString RuleStr;
+                    (*SizeObjPtr)->TryGetStringField(TEXT("Rule"), RuleStr);
+
+                    double Value = 1.0;
+                    (*SizeObjPtr)->TryGetNumberField(TEXT("Value"), Value);
+
+                    OutNode.bHasSlotSize = true;
+                    if (RuleStr.Equals(TEXT("Auto"), ESearchCase::IgnoreCase) || RuleStr.Equals(TEXT("Automatic"), ESearchCase::IgnoreCase))
+                    {
+                        OutNode.SlotSizeRule = ESlateSizeRule::Automatic;
+                        OutNode.SlotSizeValue = 1.0f;
+                    }
+                    else
+                    {
+                        OutNode.SlotSizeRule = ESlateSizeRule::Fill;
+                        OutNode.SlotSizeValue = static_cast<float>(Value);
+                    }
+                }
+            }
+        }
+        // Canvas slot
+        const TSharedPtr<FJsonObject> *CanvasObjPtr = nullptr;
+        if (SlotObj->TryGetObjectField(TEXT("Canvas"), CanvasObjPtr) && CanvasObjPtr && CanvasObjPtr->IsValid())
+        {
+            const TSharedPtr<FJsonObject> CanvasObj = *CanvasObjPtr;
+
+            const TSharedPtr<FJsonObject> *AnchorsObjPtr = nullptr;
+            if (CanvasObj->TryGetObjectField(TEXT("Anchors"), AnchorsObjPtr) && AnchorsObjPtr && AnchorsObjPtr->IsValid())
+            {
+                const TArray<TSharedPtr<FJsonValue>> *MinArr = nullptr;
+                const TArray<TSharedPtr<FJsonValue>> *MaxArr = nullptr;
+
+                if ((*AnchorsObjPtr)->TryGetArrayField(TEXT("Min"), MinArr) && MinArr && MinArr->Num() == 2 &&
+                    (*AnchorsObjPtr)->TryGetArrayField(TEXT("Max"), MaxArr) && MaxArr && MaxArr->Num() == 2)
+                {
+                    OutNode.bHasCanvasAnchors = true;
+                    OutNode.CanvasAnchorsMin = FVector2D(static_cast<float>((*MinArr)[0]->AsNumber()), static_cast<float>((*MinArr)[1]->AsNumber()));
+                    OutNode.CanvasAnchorsMax = FVector2D(static_cast<float>((*MaxArr)[0]->AsNumber()), static_cast<float>((*MaxArr)[1]->AsNumber()));
+                }
+            }
+
+            const TArray<TSharedPtr<FJsonValue>> *OffsetsArr = nullptr;
+            if (CanvasObj->TryGetArrayField(TEXT("Offsets"), OffsetsArr) && OffsetsArr && OffsetsArr->Num() == 4)
+            {
+                OutNode.bHasCanvasOffsets = true;
+                OutNode.CanvasOffsets = FMargin(
+                    static_cast<float>((*OffsetsArr)[0]->AsNumber()),
+                    static_cast<float>((*OffsetsArr)[1]->AsNumber()),
+                    static_cast<float>((*OffsetsArr)[2]->AsNumber()),
+                    static_cast<float>((*OffsetsArr)[3]->AsNumber()));
+            }
+
+            const TArray<TSharedPtr<FJsonValue>> *AlignmentArr = nullptr;
+            if (CanvasObj->TryGetArrayField(TEXT("Alignment"), AlignmentArr) && AlignmentArr && AlignmentArr->Num() == 2)
+            {
+                OutNode.bHasCanvasAlignment = true;
+                OutNode.CanvasAlignment = FVector2D(static_cast<float>((*AlignmentArr)[0]->AsNumber()), static_cast<float>((*AlignmentArr)[1]->AsNumber()));
+            }
+
+            bool bAutoSize = false;
+            if (CanvasObj->TryGetBoolField(TEXT("AutoSize"), bAutoSize))
+            {
+                OutNode.bHasCanvasAutoSize = true;
+                OutNode.bCanvasAutoSize = bAutoSize;
+            }
+
+            double ZOrder = 0.0;
+            if (CanvasObj->TryGetNumberField(TEXT("ZOrder"), ZOrder))
+            {
+                OutNode.bHasCanvasZOrder = true;
+                OutNode.CanvasZOrder = static_cast<int32>(ZOrder);
+            }
+        }
+        else
+        {
+            // Legacy/alternate CanvasPanel slot schema: allow canvas properties at Slot root.
+            // Common in P_MiniFootball specs: Anchors/Position/Size/Alignment/Offsets/AutoSize/ZOrder.
+
+            // Anchors: { Min:{X,Y}, Max:{X,Y} }
+            const TSharedPtr<FJsonObject> *AnchorsObjPtr = nullptr;
+            if (SlotObj->TryGetObjectField(TEXT("Anchors"), AnchorsObjPtr) && AnchorsObjPtr && AnchorsObjPtr->IsValid())
+            {
+                FVector2D Min, Max;
+                if (TryReadVec2(*AnchorsObjPtr, TEXT("Min"), Min) && TryReadVec2(*AnchorsObjPtr, TEXT("Max"), Max))
+                {
+                    OutNode.bHasCanvasAnchors = true;
+                    OutNode.CanvasAnchorsMin = Min;
+                    OutNode.CanvasAnchorsMax = Max;
+                }
+            }
+
+            // Offsets: {Left,Top,Right,Bottom} or [L,T,R,B]
+            if (!OutNode.bHasCanvasOffsets)
+            {
+                const TSharedPtr<FJsonObject> *OffsetsObjPtr = nullptr;
+                const TArray<TSharedPtr<FJsonValue>> *OffsetsArr = nullptr;
+                if (SlotObj->TryGetArrayField(TEXT("Offsets"), OffsetsArr) && OffsetsArr && OffsetsArr->Num() == 4)
+                {
+                    OutNode.bHasCanvasOffsets = true;
+                    OutNode.CanvasOffsets = FMargin(
+                        static_cast<float>((*OffsetsArr)[0]->AsNumber()),
+                        static_cast<float>((*OffsetsArr)[1]->AsNumber()),
+                        static_cast<float>((*OffsetsArr)[2]->AsNumber()),
+                        static_cast<float>((*OffsetsArr)[3]->AsNumber()));
+                }
+                else if (SlotObj->TryGetObjectField(TEXT("Offsets"), OffsetsObjPtr) && OffsetsObjPtr && OffsetsObjPtr->IsValid())
+                {
+                    double L = 0, T = 0, R = 0, B = 0;
+                    (*OffsetsObjPtr)->TryGetNumberField(TEXT("Left"), L);
+                    (*OffsetsObjPtr)->TryGetNumberField(TEXT("Top"), T);
+                    (*OffsetsObjPtr)->TryGetNumberField(TEXT("Right"), R);
+                    (*OffsetsObjPtr)->TryGetNumberField(TEXT("Bottom"), B);
+                    OutNode.bHasCanvasOffsets = true;
+                    OutNode.CanvasOffsets = FMargin(static_cast<float>(L), static_cast<float>(T), static_cast<float>(R), static_cast<float>(B));
+                }
+            }
+
+            // Position + Size -> Offsets (when not already specified)
+            if (!OutNode.bHasCanvasOffsets)
+            {
+                FVector2D Pos;
+                FVector2D Size;
+                const bool bHasPos = TryReadVec2(SlotObj, TEXT("Position"), Pos);
+                const bool bHasSize = TryReadVec2(SlotObj, TEXT("Size"), Size);
+                if (bHasPos)
+                {
+                    OutNode.bHasCanvasOffsets = true;
+                    OutNode.CanvasOffsets = FMargin(Pos.X, Pos.Y, bHasSize ? Size.X : 0.0f, bHasSize ? Size.Y : 0.0f);
+                }
+            }
+
+            // Alignment
+            FVector2D Align;
+            if (TryReadVec2(SlotObj, TEXT("Alignment"), Align))
+            {
+                OutNode.bHasCanvasAlignment = true;
+                OutNode.CanvasAlignment = Align;
+            }
+
+            // AutoSize
+            bool bAutoSize = false;
+            if (SlotObj->TryGetBoolField(TEXT("AutoSize"), bAutoSize))
+            {
+                OutNode.bHasCanvasAutoSize = true;
+                OutNode.bCanvasAutoSize = bAutoSize;
+            }
+
+            // ZOrder
+            double ZOrder = 0.0;
+            if (SlotObj->TryGetNumberField(TEXT("ZOrder"), ZOrder))
+            {
+                OutNode.bHasCanvasZOrder = true;
+                OutNode.CanvasZOrder = static_cast<int32>(ZOrder);
+            }
+        }
+    }
 
     const TArray<TSharedPtr<FJsonValue>> *Children = nullptr;
     if (NodeObj->TryGetArrayField(TEXT("Children"), Children) && Children)
@@ -132,7 +675,7 @@ bool FMWCS_SpecParser::ParseSpecJson(const FString &JsonString, FMWCS_WidgetSpec
 
     FString BlueprintName;
     FString ParentClass;
-    int32 Version = 0;
+    FString Version;
 
     if (!ReadStringField(RootObj, TEXT("BlueprintName"), BlueprintName))
     {
@@ -144,7 +687,13 @@ bool FMWCS_SpecParser::ParseSpecJson(const FString &JsonString, FMWCS_WidgetSpec
         AddIssue(InOutReport, EMWCS_IssueSeverity::Error, TEXT("Spec.MissingParentClass"), TEXT("Missing required field: ParentClass"), Context);
         return false;
     }
-    if (!ReadIntField(RootObj, TEXT("Version"), Version))
+
+    {
+        bool bIsToolEUW = false;
+        RootObj->TryGetBoolField(TEXT("IsToolEUW"), bIsToolEUW);
+        OutSpec.bIsToolEUW = bIsToolEUW;
+    }
+    if (!ReadVersionField(RootObj, TEXT("Version"), Version))
     {
         AddIssue(InOutReport, EMWCS_IssueSeverity::Error, TEXT("Spec.MissingVersion"), TEXT("Missing required field: Version"), Context);
         return false;
@@ -163,8 +712,21 @@ bool FMWCS_SpecParser::ParseSpecJson(const FString &JsonString, FMWCS_WidgetSpec
         AddIssue(InOutReport, EMWCS_IssueSeverity::Warning, TEXT("Spec.MissingBindings"), TEXT("Bindings missing or invalid; continuing."), Context);
     }
 
+    // Support both:
+    //   - "Hierarchy": { "Type": ..., "Name": ..., "Children": [...] }
+    //   - "Hierarchy": { "Root": { "Type": ..., ... } }
+    const TSharedPtr<FJsonObject> *HierarchyRootObj = nullptr;
+    if ((*HierarchyObj)->HasTypedField<EJson::Object>(TEXT("Root")) && (*HierarchyObj)->TryGetObjectField(TEXT("Root"), HierarchyRootObj) && HierarchyRootObj && HierarchyRootObj->IsValid())
+    {
+        // ok
+    }
+    else
+    {
+        HierarchyRootObj = HierarchyObj;
+    }
+
     FMWCS_HierarchyNode RootNode;
-    if (!ParseHierarchyNode(*HierarchyObj, RootNode))
+    if (!ParseHierarchyNode(*HierarchyRootObj, RootNode))
     {
         AddIssue(InOutReport, EMWCS_IssueSeverity::Error, TEXT("Spec.InvalidHierarchy"), TEXT("Hierarchy root node is invalid."), Context);
         return false;
@@ -173,6 +735,10 @@ bool FMWCS_SpecParser::ParseSpecJson(const FString &JsonString, FMWCS_WidgetSpec
     OutSpec.BlueprintName = FName(*BlueprintName);
     OutSpec.ParentClassPath = ParentClass;
     OutSpec.Version = Version;
+    if (!ParseDesignerPreview(RootObj, OutSpec.DesignerPreview, InOutReport, Context))
+    {
+        return false;
+    }
     OutSpec.HierarchyRoot = MoveTemp(RootNode);
     OutSpec.Bindings = MoveTemp(Bindings);
     return true;

@@ -1,3 +1,5 @@
+#include "MWCS_ToolMenus.h"
+
 #include "MWCS_ToolTab.h"
 
 #include "ToolMenus.h"

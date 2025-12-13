@@ -24,6 +24,7 @@ public class P_MWCS : ModuleRules
                 "Slate",
                 "SlateCore",
                 "ToolMenus",
+                "Settings",
                 "DeveloperSettings",
                 "UnrealEd",
                 "AssetTools",

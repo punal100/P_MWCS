@@ -29,4 +29,10 @@ public:
 
     UPROPERTY(EditAnywhere, Config, Category = "MWCS|Tool EUW", meta = (DisplayName = "Tool EUW Spec Provider Class"))
     FSoftClassPath ToolEuwSpecProviderClass;
+
+    UPROPERTY(EditAnywhere, Config, Category = "MWCS|Designer Preview", meta = (DisplayName = "Designer Preview Zoom Level Min"))
+    int32 DesignerZoomLevelMin = 0;
+
+    UPROPERTY(EditAnywhere, Config, Category = "MWCS|Designer Preview", meta = (DisplayName = "Designer Preview Zoom Level Max"))
+    int32 DesignerZoomLevelMax = 20;
 };
