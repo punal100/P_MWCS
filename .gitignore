@@ -1,0 +1,31 @@
+﻿# Ignore project files
+/.vsconfig
+/.vs/*
+/.vscode/*
+/.idea/*
+/*.sln
+
+# Ignore developers folder
+/Content/Developers/*
+/Content/__ExternalActors__/*
+/Content/__ExternalObjects__/*
+/Scripts/__pycache__/*
+
+# Ignore generated folders
+/Build/*
+/Binaries/*
+/Intermediate/*
+/DerivedDataCache/*
+/Saved/*
+/enc_temp_folder/*
+/Source/Deps/Build/*
+/UnDiffed_output.txt
+/Diffed_output.txt
+/COMMIT_MESSAGE.txt
+
+# Ignore the same things for plugins
+#/Plugins/**/Build/*
+#/Plugins/**/Intermediate/*
+#/Plugins/**/DerivedDataCache/*
+#/Plugins/**/Saved/*
+#/Plugins/**/enc_temp_folder/*

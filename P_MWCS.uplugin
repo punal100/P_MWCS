@@ -1,0 +1,22 @@
+﻿{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Modular Widget Creation System",
+	"Description": "Standalone editor-only system for spec-driven Widget Blueprint creation/repair/validation (no Python).",
+	"Category": "Editor",
+	"CreatedBy": "Punal Manalan",
+	"CreatedByURL": "https://github.com/punal100/P_MWCS.git",
+	"DocsURL": "https://github.com/punal100/P_MWCS.git",
+	"MarketplaceURL": "",
+	"SupportURL": "https://github.com/punal100/P_MWCS.git",
+	"CanContainContent": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "P_MWCS",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	]
+}
