@@ -2,6 +2,8 @@
 
 P_MWCS is an Unreal Engine **editor-only** plugin that deterministically **creates / repairs / validates** Widget Blueprints from JSON specs (no Python).
 
+For a quick checklist, see [GUIDE.md](./GUIDE.md).
+
 The source of truth is a C++ `static FString GetWidgetSpec()` on “spec provider” classes. MWCS discovers these providers from an allowlist, parses the JSON into typed structs, then rebuilds the UMG `WidgetTree` deterministically.
 
 ## Requirements
@@ -132,6 +134,10 @@ Engine\Binaries\Win64\UnrealEditor-Cmd.exe "D:\Projects\UE\A_MiniFootball\A_Mini
 Every Validate/Build run writes a machine-readable report to:
 
 - `Saved/MWCS/Reports/MWCS_<Label>_<Timestamp>.json`
+
+Troubleshooting tip:
+
+- If logs say an asset was created/repaired but you don’t see the `.uasset`, the report is the source of truth for unsupported widget types or validation failures.
 
 ## Supported widget types
 

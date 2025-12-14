@@ -25,6 +25,7 @@
 #include "Components/Button.h"
 #include "Components/CanvasPanel.h"
 #include "Components/ContentWidget.h"
+#include "Components/ComboBoxString.h"
 #include "Components/EditableTextBox.h"
 #include "Components/HorizontalBox.h"
 #include "Components/Image.h"
@@ -212,6 +213,8 @@ static UWidget *ConstructWidget(UWidgetTree *Tree, const FMWCS_HierarchyNode &No
         WidgetClass = UScrollBox::StaticClass();
     else if (Type == TEXT("Throbber"))
         WidgetClass = UThrobber::StaticClass();
+    else if (Type == TEXT("ComboBoxString"))
+        WidgetClass = UComboBoxString::StaticClass();
     else if (Type == TEXT("WidgetSwitcher"))
         WidgetClass = UWidgetSwitcher::StaticClass();
     else if (Type == TEXT("UserWidget"))
@@ -266,6 +269,8 @@ static UClass *GetWidgetClassForType(const FName Type)
         return UScrollBox::StaticClass();
     if (Type == TEXT("Throbber"))
         return UThrobber::StaticClass();
+    if (Type == TEXT("ComboBoxString"))
+        return UComboBoxString::StaticClass();
     if (Type == TEXT("WidgetSwitcher"))
         return UWidgetSwitcher::StaticClass();
     if (Type == TEXT("UserWidget"))
