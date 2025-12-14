@@ -13,6 +13,11 @@ In this project, that list is configured in `Config/DefaultEditor.ini` under:
 - `[/Script/P_MWCS.MWCS_Settings]`
 - `+SpecProviderClasses=/Script/<Module>.<Class>`
 
+Ordering tip:
+
+- Providers are processed in list order.
+- Prefer ordering from “leaf” widgets (buttons/panels) → overlays/settings → containers (HUD/Menu) so nested widget classes exist when containers are generated.
+
 ## 2) Choose output root
 
 Set `OutputRootPath` (long package path). This project uses:

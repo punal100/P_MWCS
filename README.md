@@ -44,6 +44,11 @@ In **Project Settings → MWCS**, configure:
 - **OutputRootPath**: long package path for generated WBPs (example: `/Game/UI/Widgets`)
 - **Tool EUW Output Path / Name / Spec Provider Class** (optional)
 
+Note on ordering:
+
+- MWCS processes `SpecProviderClasses` in the order they are listed.
+- If your specs reference nested widgets (e.g. `Type: "UserWidget"` with `WidgetClass`), it’s best to list “leaf” widgets first, then container widgets (HUD/Menu/etc.) so dependencies exist when the container WBPs are built.
+
 ## Spec provider contract
 
 MWCS expects a static function:
