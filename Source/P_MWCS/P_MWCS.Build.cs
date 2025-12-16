@@ -21,6 +21,7 @@ public class P_MWCS : ModuleRules
         PrivateDependencyModuleNames.AddRange(
             new string[]
             {
+                "ApplicationCore",
                 "Slate",
                 "SlateCore",
                 "ToolMenus",

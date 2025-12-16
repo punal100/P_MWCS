@@ -45,3 +45,13 @@ Every run writes JSON reports to:
 - `Saved/MWCS/Reports/`
 
 If the log says an asset was created but you don’t see a `.uasset`, check the report for unsupported widget types or other failures.
+
+## 6) Extract spec from a Widget Blueprint
+
+If you need to capture a Widget Blueprint’s current hierarchy as JSON (to help update C++ `GetWidgetSpec()`), use the MWCS Tool EUW:
+
+- Select a `WBP_*` asset in the Content Browser
+- Open **Tools → MWCS**
+- Click **Extract Selected WBP**
+
+It writes to `Saved/MWCS/ExtractedSpecs/` and copies JSON to the clipboard.

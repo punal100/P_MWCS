@@ -114,6 +114,25 @@ MWCS adds a tool tab:
 
 It exposes buttons for Validate / Create Missing / Repair / ForceRecreate / Tool EUW, and prints a summarized report.
 
+### Extract Selected WBP (spec helper)
+
+The MWCS Tool EUW also includes **Extract Selected WBP**, which exports the selected Widget Blueprint’s widget tree as a **spec-shaped JSON stub**.
+
+Usage:
+
+1. In the Content Browser, select a `WBP_*` Widget Blueprint.
+2. Open **Tools → MWCS**.
+3. Click **Extract Selected WBP**.
+
+Output:
+
+- Writes JSON to: `Saved/MWCS/ExtractedSpecs/<BlueprintName>.json`
+- Copies the JSON to the clipboard
+
+Note:
+
+- This export is intended as a starting point (Hierarchy + basic header fields). You may still need to adjust layout/slot fields and bindings to fully match your `GetWidgetSpec()` provider conventions.
+
 ## Commandlets (CI / Headless)
 
 Commandlets:

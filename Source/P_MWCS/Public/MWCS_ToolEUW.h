@@ -43,12 +43,28 @@ protected:
     UButton *Btn_GenerateToolEUW = nullptr;
 
     UPROPERTY(meta = (BindWidget))
+    UButton *Btn_ExtractSelectedWBP = nullptr;
+
+    UPROPERTY(meta = (BindWidget))
     UMultiLineEditableTextBox *OutputLog = nullptr;
 
 private:
     void RefreshSettingsSummary();
     void AppendLine(const FString &Line);
     void AppendReport(const FString &Title, const struct FMWCS_Report &Report);
+
+    bool ExportWidgetBlueprintHierarchyToJson(class UWidgetBlueprint *WidgetBlueprint,
+                                              bool bWriteToFile = true,
+                                              bool bCopyToClipboard = true,
+                                              bool bShowOutputWindow = true,
+                                              bool bIncludeSourceAssetField = false,
+                                              bool bIncludeSlotLayout = true,
+                                              bool bIncludeCanvasSlot = true,
+                                              bool bIncludeTextProperties = true,
+                                              bool bIncludeWidgetClassPaths = true,
+                                              bool bIncludeIsVariable = false,
+                                              bool bIncludePropertiesSection = true,
+                                              bool bIncludeDesignSection = true);
 
     UFUNCTION()
     void HandleOpenSettingsClicked();
@@ -67,4 +83,7 @@ private:
 
     UFUNCTION()
     void HandleGenerateToolEuwClicked();
+
+    UFUNCTION()
+    void HandleExtractSelectedWbpClicked();
 };
