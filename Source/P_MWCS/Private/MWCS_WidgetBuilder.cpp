@@ -45,6 +45,10 @@
 #include "Components/OverlaySlot.h"
 #include "Components/VerticalBoxSlot.h"
 
+#include "Dom/JsonObject.h"
+
+static void ApplyDesignMeta(UWidget *Widget, const TSharedPtr<FJsonObject> &DesignObj);
+
 static void AddIssue(FMWCS_Report &Report, EMWCS_IssueSeverity Severity, const FString &Code, const FString &Message, const FString &Context)
 {
     FMWCS_Issue Issue;
@@ -473,6 +477,7 @@ static bool BuildNode(
     const TSet<FName> &RequiredVars,
     const TSet<FName> &ForceVariableNames,
     const TMap<FName, FString> &BindingTypes,
+    const TMap<FName, TSharedPtr<FJsonObject>> &DesignMap,
     bool bStrictNaming,
     TSet<FName> &InOutSpecNames,
     FMWCS_Report &Report,
@@ -636,6 +641,7 @@ static bool BuildNode(
     // Apply slot/layout metadata when available.
     ApplySlotMeta(Current, Node);
 
+    // Apply hierarchy node metadata first, then let GetWidgetSpec-style Design override it.
     if (Node.Type == TEXT("TextBlock"))
     {
         if (UTextBlock *TB = Cast<UTextBlock>(Current))
@@ -644,9 +650,18 @@ static bool BuildNode(
         }
     }
 
+    // Apply GetWidgetSpec-style Design section (per-widget at root.Design[WidgetName]).
+    if (Node.Name != NAME_None)
+    {
+        if (const TSharedPtr<FJsonObject> *DesignObj = DesignMap.Find(Node.Name))
+        {
+            ApplyDesignMeta(Current, *DesignObj);
+        }
+    }
+
     for (const FMWCS_HierarchyNode &Child : Node.Children)
     {
-        if (!BuildNode(Tree, Child, Current, BlueprintParentClass, RequiredVars, ForceVariableNames, BindingTypes, bStrictNaming, InOutSpecNames, Report, Context))
+        if (!BuildNode(Tree, Child, Current, BlueprintParentClass, RequiredVars, ForceVariableNames, BindingTypes, DesignMap, bStrictNaming, InOutSpecNames, Report, Context))
         {
             return false;
         }
@@ -685,6 +700,197 @@ static bool TrySetIntPropertyByName(UObject *Obj, const TCHAR *PropName, int32 V
         return true;
     }
     return false;
+}
+
+static bool TryParseLinearColor(const TSharedPtr<FJsonObject> &Obj, FLinearColor &Out)
+{
+    if (!Obj.IsValid())
+    {
+        return false;
+    }
+
+    double R = 0.0, G = 0.0, B = 0.0, A = 1.0;
+    if (!Obj->TryGetNumberField(TEXT("R"), R) || !Obj->TryGetNumberField(TEXT("G"), G) || !Obj->TryGetNumberField(TEXT("B"), B))
+    {
+        return false;
+    }
+    Obj->TryGetNumberField(TEXT("A"), A);
+    Out = FLinearColor(static_cast<float>(R), static_cast<float>(G), static_cast<float>(B), static_cast<float>(A));
+    return true;
+}
+
+static bool TryParseVector2D(const TSharedPtr<FJsonObject> &Obj, FVector2D &Out)
+{
+    if (!Obj.IsValid())
+    {
+        return false;
+    }
+
+    double X = 0.0, Y = 0.0;
+    if (!Obj->TryGetNumberField(TEXT("X"), X) || !Obj->TryGetNumberField(TEXT("Y"), Y))
+    {
+        return false;
+    }
+    Out = FVector2D(static_cast<float>(X), static_cast<float>(Y));
+    return true;
+}
+
+static bool TryParsePaddingObject(const TSharedPtr<FJsonObject> &Obj, FMargin &Out)
+{
+    if (!Obj.IsValid())
+    {
+        return false;
+    }
+
+    double L = 0.0, T = 0.0, R = 0.0, B = 0.0;
+    const bool bAny =
+        Obj->TryGetNumberField(TEXT("Left"), L) |
+        Obj->TryGetNumberField(TEXT("Top"), T) |
+        Obj->TryGetNumberField(TEXT("Right"), R) |
+        Obj->TryGetNumberField(TEXT("Bottom"), B);
+
+    if (!bAny)
+    {
+        return false;
+    }
+
+    Out = FMargin(static_cast<float>(L), static_cast<float>(T), static_cast<float>(R), static_cast<float>(B));
+    return true;
+}
+
+static void ApplyDesignMeta(UWidget *Widget, const TSharedPtr<FJsonObject> &DesignObj)
+{
+    if (!Widget || !DesignObj.IsValid())
+    {
+        return;
+    }
+
+    if (UButton *Button = Cast<UButton>(Widget))
+    {
+        bool bIsFocusable = Button->GetIsFocusable();
+        if (DesignObj->TryGetBoolField(TEXT("IsFocusable"), bIsFocusable))
+        {
+            // There is no public setter; apply via reflection.
+            // Property name differs across some engine versions / classes.
+            (void)TrySetBoolPropertyByName(Button, TEXT("IsFocusable"), bIsFocusable);
+            (void)TrySetBoolPropertyByName(Button, TEXT("bIsFocusable"), bIsFocusable);
+        }
+
+        const TSharedPtr<FJsonObject> *StyleObjPtr = nullptr;
+        if (DesignObj->TryGetObjectField(TEXT("Style"), StyleObjPtr) && StyleObjPtr && StyleObjPtr->IsValid())
+        {
+            FButtonStyle Style = Button->GetStyle();
+
+            auto ApplyStateTint = [&](const TCHAR *StateName, FSlateBrush &Brush)
+            {
+                const TSharedPtr<FJsonObject> *StateObjPtr = nullptr;
+                if (!(*StyleObjPtr)->TryGetObjectField(StateName, StateObjPtr) || !StateObjPtr || !StateObjPtr->IsValid())
+                {
+                    return;
+                }
+                const TSharedPtr<FJsonObject> *TintObjPtr = nullptr;
+                if (!(*StateObjPtr)->TryGetObjectField(TEXT("TintColor"), TintObjPtr) || !TintObjPtr || !TintObjPtr->IsValid())
+                {
+                    return;
+                }
+                FLinearColor Tint;
+                if (TryParseLinearColor(*TintObjPtr, Tint))
+                {
+                    Brush.TintColor = FSlateColor(Tint);
+                }
+            };
+
+            ApplyStateTint(TEXT("Normal"), Style.Normal);
+            ApplyStateTint(TEXT("Hovered"), Style.Hovered);
+            ApplyStateTint(TEXT("Pressed"), Style.Pressed);
+            Button->SetStyle(Style);
+        }
+        return;
+    }
+
+    if (UImage *Img = Cast<UImage>(Widget))
+    {
+        const TSharedPtr<FJsonObject> *SizeObjPtr = nullptr;
+        if (DesignObj->TryGetObjectField(TEXT("Size"), SizeObjPtr) && SizeObjPtr && SizeObjPtr->IsValid())
+        {
+            FVector2D Size;
+            if (TryParseVector2D(*SizeObjPtr, Size))
+            {
+                FSlateBrush Brush = Img->GetBrush();
+                Brush.ImageSize = Size;
+                Img->SetBrush(Brush);
+            }
+        }
+
+        const TSharedPtr<FJsonObject> *ColorObjPtr = nullptr;
+        if (DesignObj->TryGetObjectField(TEXT("ColorAndOpacity"), ColorObjPtr) && ColorObjPtr && ColorObjPtr->IsValid())
+        {
+            FLinearColor C;
+            if (TryParseLinearColor(*ColorObjPtr, C))
+            {
+                Img->SetColorAndOpacity(C);
+            }
+        }
+        return;
+    }
+
+    if (UTextBlock *TB = Cast<UTextBlock>(Widget))
+    {
+        const TSharedPtr<FJsonObject> *FontObjPtr = nullptr;
+        if (DesignObj->TryGetObjectField(TEXT("Font"), FontObjPtr) && FontObjPtr && FontObjPtr->IsValid())
+        {
+            FSlateFontInfo Font = TB->GetFont();
+
+            double Size = 0.0;
+            if ((*FontObjPtr)->TryGetNumberField(TEXT("Size"), Size))
+            {
+                Font.Size = FMath::Max(0, static_cast<int32>(Size));
+            }
+
+            FString Typeface;
+            if ((*FontObjPtr)->TryGetStringField(TEXT("Typeface"), Typeface) && !Typeface.IsEmpty())
+            {
+                Font.TypefaceFontName = FName(*Typeface);
+            }
+
+            TB->SetFont(Font);
+        }
+
+        const TSharedPtr<FJsonObject> *ColorObjPtr = nullptr;
+        if (DesignObj->TryGetObjectField(TEXT("ColorAndOpacity"), ColorObjPtr) && ColorObjPtr && ColorObjPtr->IsValid())
+        {
+            FLinearColor C;
+            if (TryParseLinearColor(*ColorObjPtr, C))
+            {
+                TB->SetColorAndOpacity(FSlateColor(C));
+            }
+        }
+        return;
+    }
+
+    if (UBorder *Border = Cast<UBorder>(Widget))
+    {
+        const TSharedPtr<FJsonObject> *ColorObjPtr = nullptr;
+        if (DesignObj->TryGetObjectField(TEXT("BrushColor"), ColorObjPtr) && ColorObjPtr && ColorObjPtr->IsValid())
+        {
+            FLinearColor C;
+            if (TryParseLinearColor(*ColorObjPtr, C))
+            {
+                Border->SetBrushColor(C);
+            }
+        }
+
+        const TSharedPtr<FJsonObject> *PaddingObjPtr = nullptr;
+        if (DesignObj->TryGetObjectField(TEXT("Padding"), PaddingObjPtr) && PaddingObjPtr && PaddingObjPtr->IsValid())
+        {
+            FMargin Pad;
+            if (TryParsePaddingObject(*PaddingObjPtr, Pad))
+            {
+                Border->SetPadding(Pad);
+            }
+        }
+        return;
+    }
 }
 
 static bool ApplyDesignerPreviewMetadata(UWidgetBlueprint *Blueprint, const FMWCS_WidgetSpec &Spec, FMWCS_Report &Report, const FString &Context)
@@ -1013,7 +1219,7 @@ static bool CreateOrUpdateInternal(const FString &PackagePath, const FString &As
 
     TSet<FName> SeenSpecNames;
 
-    if (!BuildNode(Blueprint->WidgetTree, Spec.HierarchyRoot, /*Parent*/ nullptr, ParentClass, RequiredVarNames, ForceVariableNames, Spec.Bindings.Types, bStrictNaming, SeenSpecNames, Report, Context))
+    if (!BuildNode(Blueprint->WidgetTree, Spec.HierarchyRoot, /*Parent*/ nullptr, ParentClass, RequiredVarNames, ForceVariableNames, Spec.Bindings.Types, Spec.Design, bStrictNaming, SeenSpecNames, Report, Context))
     {
         return false;
     }

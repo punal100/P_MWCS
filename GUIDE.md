@@ -55,3 +55,16 @@ If you need to capture a Widget Blueprint’s current hierarchy as JSON (to help
 - Click **Extract Selected WBP**
 
 It writes to `Saved/MWCS/ExtractedSpecs/` and copies JSON to the clipboard.
+
+### What gets exported (schema parity)
+
+The exporter is shaped to match the project’s `GetWidgetSpec()` conventions for the supported parity set:
+
+- `DesignerPreview` (e.g. `SizeMode`, `CustomSize`, plus best-effort UX hints like `ZoomLevel` and `ShowGrid`)
+- `Hierarchy` (wrapped as `Hierarchy.Root`)
+- `Design` (root object keyed by widget name)
+- `Dependencies` (best-effort string array of referenced object paths)
+
+MWCS validation also checks this same supported parity set (plus ParentClass and required widgets).
+
+Write-only sections like `Bindings` / `Delegates` are intentionally ignored for extraction parity.

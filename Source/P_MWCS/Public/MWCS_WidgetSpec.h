@@ -4,6 +4,7 @@
 
 #include "Layout/Margin.h"
 #include "Components/SlateWrapperTypes.h"
+#include "Dom/JsonObject.h"
 
 struct FMWCS_Bindings
 {
@@ -90,4 +91,13 @@ struct FMWCS_WidgetSpec
     FMWCS_DesignerPreview DesignerPreview;
     FMWCS_HierarchyNode HierarchyRoot;
     FMWCS_Bindings Bindings;
+
+    // GetWidgetSpec-style root sections
+    // Design is stored as per-widget JSON so MWCS can support incremental schema expansion
+    // without over-structuring every possible UMG property.
+    TMap<FName, TSharedPtr<FJsonObject>> Design;
+
+    // Best-effort list of asset/object dependencies referenced by the Design section.
+    // Stored as strings (object paths) to match exporter output.
+    TArray<FString> Dependencies;
 };

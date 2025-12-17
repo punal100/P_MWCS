@@ -15,7 +15,7 @@ The source of truth is a C++ `static FString GetWidgetSpec()` on “spec provide
 ## What MWCS does
 
 - **Discover specs** from configured spec providers
-- **Validate** assets (parent class, required widgets, hierarchy expectations)
+- **Validate** assets against the supported parity set (parent class, required widgets, `DesignerPreview`, `Hierarchy`, `Design`, and best-effort `Dependencies` path validity)
 - **Create Missing**: only creates assets that don’t exist
 - **Repair**: deterministically rebuilds the widget tree for existing assets
 - **ForceRecreate**: deterministic “rebuild everything” mode (implemented as an in-place rebuild to avoid deletion-time engine warnings in strict CI)
@@ -78,14 +78,14 @@ Example:
    "SizeMode": "FillScreen",
    "CustomSize": { "X": 1920, "Y": 1080 },
    "ZoomLevel": 14,
-   "bShowGrid": true
+  "ShowGrid": true
 }
 ```
 
 Notes:
 
 - `SizeMode` / `CustomSize` are applied strictly.
-- `ZoomLevel` / `bShowGrid` are treated as best-effort UX hints (engine versions may not persist these per-asset).
+- `ZoomLevel` / `ShowGrid` are treated as best-effort UX hints (engine versions may not persist these per-asset).
 
 ### Nested widgets: `Type: "UserWidget"` + `WidgetClass`
 
@@ -105,6 +105,427 @@ Resolution rules:
 1. If `WidgetClass` is provided, MWCS loads it.
 2. Otherwise, MWCS may infer the class from binding metadata.
 3. Final fallback is `UUserWidget`.
+
+## Spec Format Reference
+
+This section documents all accepted JSON formats for `GetWidgetSpec()`.
+
+### Slot Configuration
+
+Slots define how a widget is positioned/sized within its parent container.
+
+#### CanvasPanel Slots
+
+For children of `CanvasPanel`, use canvas slot properties:
+
+```json
+"Slot": {
+    "Anchors": {"Min": {"X": 0.5, "Y": 0}, "Max": {"X": 0.5, "Y": 0}},
+    "Offsets": {"Left": 0, "Top": 50, "Right": 0, "Bottom": 0},
+    "Alignment": {"X": 0.5, "Y": 0},
+    "AutoSize": true,
+    "ZOrder": 0
+}
+```
+
+**Alternative format** - Position+Size (converted to Offsets internally):
+
+```json
+"Slot": {
+    "Anchors": {"Min": {"X": 0.5, "Y": 0.5}, "Max": {"X": 0.5, "Y": 0.5}},
+    "Position": {"X": 0, "Y": 0},
+    "Size": {"X": 800, "Y": 600},
+    "Alignment": {"X": 0.5, "Y": 0.5}
+}
+```
+
+**Offsets array format** (Left, Top, Right, Bottom):
+
+```json
+"Slot": {
+    "Anchors": {"Min": {"X": 0, "Y": 0}, "Max": {"X": 1, "Y": 1}},
+    "Offsets": [0, 0, 0, 0]
+}
+```
+
+#### HorizontalBox / VerticalBox Slots
+
+For children of box containers:
+
+```json
+"Slot": {
+    "HAlign": "Fill",
+    "VAlign": "Center",
+    "Padding": {"Left": 10, "Top": 5, "Right": 10, "Bottom": 5},
+    "Size": {"Rule": "Auto"}
+}
+```
+
+**Size.Rule values:**
+- `"Auto"` - Widget sizes to content (ESlateSizeRule::Automatic)
+- `"Fill"` - Widget fills available space (ESlateSizeRule::Fill)
+- With Fill, use `"Value": 1.0` for fill weight
+
+**Padding formats** (all equivalent):
+```json
+"Padding": {"Left": 10, "Top": 5, "Right": 10, "Bottom": 5}
+"Padding": [10, 5, 10, 5]
+"Padding": 10
+```
+
+**Alignment values:** `"Left"`, `"Center"`, `"Right"`, `"Fill"` (for HAlign)  
+**VAlign values:** `"Top"`, `"Center"`, `"Bottom"`, `"Fill"`
+
+#### Overlay Slots
+
+For children of `Overlay`:
+
+```json
+"Slot": {
+    "HAlign": "Fill",
+    "VAlign": "Fill",
+    "Padding": 0
+}
+```
+
+### Properties Section
+
+`Properties` defines widget-specific settings (NOT slot settings):
+
+```json
+{
+    "Type": "VerticalBox",
+    "Name": "ContentBox",
+    "Properties": {
+        "SizeToContent": true,
+        "Spacing": 8
+    }
+}
+```
+
+**Do NOT confuse with Slot** - Properties are widget settings, Slot is parent layout.
+
+### Design Section
+
+The `Design` section applies styling to named widgets:
+
+```json
+"Design": {
+    "TitleText": {
+        "Font": {"Size": 24, "Typeface": "Bold"},
+        "Text": "PAUSED",
+        "ColorAndOpacity": {"R": 1.0, "G": 1.0, "B": 1.0, "A": 1.0}
+    },
+    "ActionButton": {
+        "Style": {
+            "Normal": {"TintColor": {"R": 0.2, "G": 0.5, "B": 0.2, "A": 1.0}},
+            "Hovered": {"TintColor": {"R": 0.3, "G": 0.6, "B": 0.3, "A": 1.0}},
+            "Pressed": {"TintColor": {"R": 0.15, "G": 0.4, "B": 0.15, "A": 1.0}}
+        },
+        "IsFocusable": true
+    },
+    "PanelBorder": {
+        "BrushColor": {"R": 0.1, "G": 0.1, "B": 0.1, "A": 0.9},
+        "Padding": {"Left": 15, "Top": 10, "Right": 15, "Bottom": 10}
+    }
+}
+```
+
+**TextBlock properties:** `Font`, `Text`, `ColorAndOpacity`, `Justification`  
+**Button properties:** `Style` (Normal/Hovered/Pressed), `IsFocusable`  
+**Border properties:** `BrushColor`, `Padding`, `Background`  
+**Image properties:** `ColorAndOpacity`, `Brush`
+
+### Dependencies Section
+
+Dependencies is an array of asset paths referenced by the spec:
+
+**String format (asset paths):**
+```json
+"Dependencies": [
+    "/Engine/EngineFonts/Roboto.Roboto",
+    "/Game/UI/Textures/T_ButtonBG.T_ButtonBG"
+]
+```
+
+**Object format (widget class dependencies):**
+```json
+"Dependencies": [
+    {"Class": "UMF_TeamPanel", "Blueprint": "WBP_MF_TeamPanel", "Required": true},
+    {"Class": "UMF_QuickTeamPanel", "Blueprint": "WBP_MF_QuickTeamPanel", "Required": false}
+]
+```
+
+**Mixed format:**
+```json
+"Dependencies": [
+    "/Engine/EngineFonts/Roboto.Roboto",
+    {"Class": "UMF_TeamPanel", "Blueprint": "WBP_MF_TeamPanel", "Required": true}
+]
+```
+
+### Complete Minimal Example
+
+```json
+{
+    "WidgetClass": "UMyWidget",
+    "BlueprintName": "WBP_MyWidget",
+    "ParentClass": "/Script/MyModule.MyWidget",
+    "Version": "1.0.0",
+    
+    "DesignerPreview": {
+        "SizeMode": "Desired",
+        "ZoomLevel": 14
+    },
+    
+    "Hierarchy": {
+        "Root": {
+            "Type": "CanvasPanel",
+            "Name": "RootCanvas",
+            "Children": [
+                {
+                    "Type": "TextBlock",
+                    "Name": "TitleText",
+                    "BindingType": "Required",
+                    "Text": "Hello",
+                    "Slot": {
+                        "Anchors": {"Min": {"X": 0.5, "Y": 0.5}, "Max": {"X": 0.5, "Y": 0.5}},
+                        "Alignment": {"X": 0.5, "Y": 0.5}
+                    }
+                }
+            ]
+        }
+    },
+    
+    "Design": {
+        "TitleText": {
+            "Font": {"Size": 24, "Typeface": "Bold"},
+            "ColorAndOpacity": {"R": 1, "G": 1, "B": 1, "A": 1}
+        }
+    },
+    
+    "Bindings": {
+        "Required": [
+            {"Name": "TitleText", "Type": "UTextBlock", "Purpose": "Main title"}
+        ],
+        "Optional": []
+    },
+    
+    "Dependencies": []
+}
+```
+
+### Example: Button with Styled Text Child
+
+```json
+{
+    "Type": "Button",
+    "Name": "ActionButton",
+    "BindingType": "Required",
+    "Slot": {"HAlign": "Center", "Padding": {"Bottom": 10}},
+    "Children": [
+        {
+            "Type": "TextBlock",
+            "Name": "ActionButtonLabel",
+            "Text": "CLICK ME",
+            "FontSize": 18,
+            "Justification": "Center",
+            "Slot": {"HAlign": "Center", "VAlign": "Center"}
+        }
+    ]
+}
+```
+
+Design for button with all states:
+
+```json
+"Design": {
+    "ActionButton": {
+        "Style": {
+            "Normal": {"TintColor": {"R": 0.2, "G": 0.5, "B": 0.2, "A": 1.0}},
+            "Hovered": {"TintColor": {"R": 0.3, "G": 0.65, "B": 0.3, "A": 1.0}},
+            "Pressed": {"TintColor": {"R": 0.15, "G": 0.4, "B": 0.15, "A": 1.0}}
+        },
+        "IsFocusable": true
+    },
+    "ActionButtonLabel": {
+        "Font": {"Size": 18, "Typeface": "Bold"},
+        "ColorAndOpacity": {"R": 1, "G": 1, "B": 1, "A": 1}
+    }
+}
+```
+
+### Example: VerticalBox Menu with Spacing
+
+```json
+{
+    "Type": "VerticalBox",
+    "Name": "MenuContainer",
+    "Properties": {"SizeToContent": true, "Spacing": 8},
+    "Children": [
+        {
+            "Type": "TextBlock",
+            "Name": "MenuTitle",
+            "Text": "MAIN MENU",
+            "Slot": {"HAlign": "Center", "Padding": {"Bottom": 20}}
+        },
+        {
+            "Type": "Button",
+            "Name": "PlayButton",
+            "Slot": {"HAlign": "Fill", "Padding": {"Left": 20, "Right": 20}},
+            "Children": [{"Type": "TextBlock", "Name": "PlayLabel", "Text": "PLAY"}]
+        },
+        {
+            "Type": "Button",
+            "Name": "OptionsButton",
+            "Slot": {"HAlign": "Fill", "Padding": {"Left": 20, "Right": 20}},
+            "Children": [{"Type": "TextBlock", "Name": "OptionsLabel", "Text": "OPTIONS"}]
+        },
+        {
+            "Type": "Button",
+            "Name": "QuitButton",
+            "Slot": {"HAlign": "Fill", "Padding": {"Left": 20, "Right": 20, "Top": 10}},
+            "Children": [{"Type": "TextBlock", "Name": "QuitLabel", "Text": "QUIT"}]
+        }
+    ]
+}
+```
+
+### Example: HUD with Anchored Elements
+
+```json
+"Hierarchy": {
+    "Root": {
+        "Type": "CanvasPanel",
+        "Name": "HUDCanvas",
+        "Children": [
+            {
+                "Type": "TextBlock",
+                "Name": "ScoreText",
+                "Text": "0 - 0",
+                "Slot": {
+                    "Anchors": {"Min": {"X": 0.5, "Y": 0}, "Max": {"X": 0.5, "Y": 0}},
+                    "Offsets": {"Left": 0, "Top": 20, "Right": 0, "Bottom": 0},
+                    "Alignment": {"X": 0.5, "Y": 0},
+                    "AutoSize": true
+                }
+            },
+            {
+                "Type": "TextBlock",
+                "Name": "TimeText",
+                "Text": "00:00",
+                "Slot": {
+                    "Anchors": {"Min": {"X": 0.5, "Y": 0}, "Max": {"X": 0.5, "Y": 0}},
+                    "Offsets": {"Left": 0, "Top": 60, "Right": 0, "Bottom": 0},
+                    "Alignment": {"X": 0.5, "Y": 0},
+                    "AutoSize": true
+                }
+            },
+            {
+                "Type": "HorizontalBox",
+                "Name": "BottomBar",
+                "Slot": {
+                    "Anchors": {"Min": {"X": 0, "Y": 1}, "Max": {"X": 1, "Y": 1}},
+                    "Offsets": {"Left": 10, "Top": -50, "Right": 10, "Bottom": 10},
+                    "Alignment": {"X": 0, "Y": 1}
+                },
+                "Children": [
+                    {"Type": "TextBlock", "Name": "LeftInfo", "Slot": {"Size": {"Rule": "Fill", "Value": 1}}},
+                    {"Type": "TextBlock", "Name": "RightInfo", "Slot": {"HAlign": "Right"}}
+                ]
+            }
+        ]
+    }
+}
+```
+
+### Example: Popup with Border and Nested UserWidget
+
+```json
+"Hierarchy": {
+    "Root": {
+        "Type": "CanvasPanel",
+        "Name": "PopupRoot",
+        "Children": [
+            {
+                "Type": "Image",
+                "Name": "BackgroundDim",
+                "Slot": {
+                    "Anchors": {"Min": {"X": 0, "Y": 0}, "Max": {"X": 1, "Y": 1}},
+                    "Offsets": {"Left": 0, "Top": 0, "Right": 0, "Bottom": 0}
+                }
+            },
+            {
+                "Type": "Border",
+                "Name": "PopupBorder",
+                "Slot": {
+                    "Anchors": {"Min": {"X": 0.5, "Y": 0.5}, "Max": {"X": 0.5, "Y": 0.5}},
+                    "Position": {"X": 0, "Y": 0},
+                    "Size": {"X": 600, "Y": 400},
+                    "Alignment": {"X": 0.5, "Y": 0.5}
+                },
+                "Children": [
+                    {
+                        "Type": "VerticalBox",
+                        "Name": "PopupContent",
+                        "Children": [
+                            {
+                                "Type": "HorizontalBox",
+                                "Name": "Header",
+                                "Slot": {"Size": {"Rule": "Auto"}},
+                                "Children": [
+                                    {"Type": "TextBlock", "Name": "Title", "Text": "POPUP", "Slot": {"Size": {"Rule": "Fill"}}},
+                                    {"Type": "Button", "Name": "CloseBtn", "Children": [{"Type": "TextBlock", "Name": "CloseLbl", "Text": "X"}]}
+                                ]
+                            },
+                            {
+                                "Type": "UserWidget",
+                                "Name": "ContentPanel",
+                                "WidgetClass": "/Script/MyModule.MyContentWidget",
+                                "Slot": {"Size": {"Rule": "Fill"}}
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+},
+"Design": {
+    "BackgroundDim": {
+        "ColorAndOpacity": {"R": 0, "G": 0, "B": 0, "A": 0.7}
+    },
+    "PopupBorder": {
+        "BrushColor": {"R": 0.1, "G": 0.1, "B": 0.15, "A": 0.95},
+        "Padding": {"Left": 20, "Top": 15, "Right": 20, "Bottom": 15}
+    }
+},
+"Dependencies": [
+    {"Class": "UMyContentWidget", "Blueprint": "WBP_MyContentWidget", "Required": true}
+]
+```
+
+### Example: ScrollBox with Dynamic Content
+
+```json
+{
+    "Type": "ScrollBox",
+    "Name": "ItemScroll",
+    "BindingType": "Required",
+    "Slot": {"Size": {"Rule": "Fill"}},
+    "Children": [
+        {
+            "Type": "VerticalBox",
+            "Name": "ItemList",
+            "BindingType": "Required",
+            "Properties": {"SizeToContent": true, "Spacing": 4}
+        }
+    ]
+}
+```
+
+Note: Dynamic content (like list items) should be added at runtime via C++/Blueprint code to the `ItemList` container.
+
 
 ## Editor UI
 
@@ -129,9 +550,445 @@ Output:
 - Writes JSON to: `Saved/MWCS/ExtractedSpecs/<BlueprintName>.json`
 - Copies the JSON to the clipboard
 
+The exported JSON is shaped to match the project’s `GetWidgetSpec()` conventions for the supported parity set:
+
+- `DesignerPreview`
+- `Hierarchy` (wrapped as `Hierarchy.Root`)
+- `Design` (root object keyed by widget name)
+- `Dependencies` (best-effort string array of referenced asset/object paths)
+
 Note:
 
-- This export is intended as a starting point (Hierarchy + basic header fields). You may still need to adjust layout/slot fields and bindings to fully match your `GetWidgetSpec()` provider conventions.
+- This export is intended as a starting point. MWCS intentionally ignores write-only / non-extractable sections like `Bindings`, `Delegates`, `Comments`, and `PythonSnippets` during extraction parity.
+
+## Updating GetWidgetSpec from Extracted Data
+
+When you have extracted JSON and need to update your C++ `GetWidgetSpec()` to match, follow these rules to avoid losing crucial data.
+
+### Golden Rules
+
+1. **DO NOT delete fields** - Only update values, never remove existing fields
+2. **DO NOT change field order** - Preserve the existing structure
+3. **DO NOT replace entire sections** - Update individual values within sections
+4. **Preserve non-extractable sections** - `Bindings`, `Delegates`, `Comments`, `PythonSnippets` are write-only
+
+### Parity Set (What Matters for Matching)
+
+MWCS validates these sections for parity:
+- `DesignerPreview`
+- `Hierarchy`
+- `Design`
+- `Dependencies`
+
+These sections are **write-only** (not extracted, do not modify):
+- `Bindings`
+- `Delegates`
+- `Comments`
+- `PythonSnippets`
+
+### What to Update vs Preserve
+
+| Extracted Has | C++ Has | Action |
+|---------------|---------|--------|
+| `Position`+`Size` | `Offsets` | **Keep Offsets** - both are equivalent |
+| `Size: {"Rule": "Auto"}` | Nothing | **Add only if needed** for box slots |
+| More `ColorAndOpacity` entries | Fewer entries | **Add the missing entries** |
+| More button states | Only `Normal` | **Add `Hovered`/`Pressed`** if desired |
+| Font dependency | Empty `Dependencies` | **Add to array**, don't replace |
+| Different `Properties` | `Properties` | **Keep existing** `Properties` |
+
+### Step-by-Step Workflow
+
+1. **Extract the WBP**
+   ```
+   Tools → MWCS → Extract Selected WBP
+   ```
+
+2. **Compare sections** - Open extracted JSON and C++ spec side-by-side
+
+3. **For DesignerPreview** - Update values if zoom/size differs:
+   ```cpp
+   // Before
+   "ZoomLevel": 12
+   // After (if extracted shows 14)
+   "ZoomLevel": 14
+   ```
+
+4. **For Hierarchy** - Add missing slot properties, DON'T replace format:
+   ```cpp
+   // WRONG - replacing Offsets with Position+Size
+   "Slot": {"Position": {"X": 0}, "Size": {"X": 100}}
+   
+   // CORRECT - keep Offsets, add missing fields
+   "Slot": {"Offsets": {...}, "Alignment": {...}, "AutoSize": true}
+   ```
+
+5. **For Design** - Add missing entries, update values, never delete:
+   ```cpp
+   // If extracted has ColorAndOpacity but C++ doesn't, ADD it:
+   "TitleText": {
+       "Font": {"Size": 24, "Typeface": "Bold"},
+       "ColorAndOpacity": {"R": 1, "G": 1, "B": 1, "A": 1}  // Added
+   }
+   ```
+
+6. **For Dependencies** - Merge, don't replace:
+   ```cpp
+   // Before
+   "Dependencies": [
+       {"Class": "UMF_TeamPanel", "Blueprint": "WBP_MF_TeamPanel", "Required": true}
+   ]
+   
+   // After (if extracted also has font)
+   "Dependencies": [
+       {"Class": "UMF_TeamPanel", "Blueprint": "WBP_MF_TeamPanel", "Required": true},
+       "/Engine/EngineFonts/Roboto.Roboto"
+   ]
+   ```
+
+7. **Test** - Run MWCS ForceRecreate + Validate:
+   ```bat
+   MWCS_CreateWidgets -Mode=ForceRecreate
+   MWCS_ValidateWidgets
+   ```
+
+### Common Mistakes to Avoid
+
+❌ **Replacing `Properties` with `Slot`**
+```cpp
+// WRONG - Properties and Slot serve different purposes
+"Properties": {"Spacing": 8}  →  "Slot": {"Spacing": 8}
+
+// Properties = widget settings (Spacing, SizeToContent)
+// Slot = parent layout settings (HAlign, VAlign, Padding)
+```
+
+❌ **Removing child Slot attributes**
+```cpp
+// WRONG - Don't remove Slot from button's text child
+"Children": [{"Type": "TextBlock", "Name": "Label", "Text": "OK"}]
+
+// CORRECT - Keep the alignment
+"Children": [{"Type": "TextBlock", "Name": "Label", "Text": "OK", 
+              "Slot": {"HAlign": "Center", "VAlign": "Center"}}]
+```
+
+❌ **Replacing class dependencies with font-only**
+```cpp
+// WRONG
+"Dependencies": ["/Engine/EngineFonts/Roboto.Roboto"]
+
+// CORRECT - Keep class deps, add font
+"Dependencies": [
+    {"Class": "UMF_TeamPanel", "Blueprint": "WBP_MF_TeamPanel", "Required": true},
+    "/Engine/EngineFonts/Roboto.Roboto"
+]
+```
+
+❌ **Removing Text values from Design**
+```cpp
+// WRONG - Don't remove existing values
+"TitleText": {"Font": {...}}
+
+// CORRECT - Keep existing Text
+"TitleText": {"Font": {...}, "Text": "TITLE"}
+```
+
+### Quick Reference: Format Equivalence
+
+These formats are **equivalent** (MWCS accepts both):
+
+| Format A | Format B |
+|----------|----------|
+| `"Offsets": {"Left": 0, "Top": 50, "Right": 0, "Bottom": 0}` | `"Position": {"X": 0, "Y": 50}, "Size": {"X": 0, "Y": 0}` |
+| `"Offsets": [0, 50, 0, 0]` | `"Offsets": {"Left": 0, "Top": 50, ...}` |
+| `"Padding": 10` | `"Padding": {"Left": 10, "Top": 10, "Right": 10, "Bottom": 10}` |
+| `"Padding": [10, 5, 10, 5]` | `"Padding": {"Left": 10, "Top": 5, ...}` |
+
+**Key insight**: If your C++ uses Format A and extracted shows Format B, **keep Format A** - they produce the same result.
+
+### Real-World Example: WBP_MF_MatchInfo
+
+Here's a complete example comparing extracted JSON with C++ spec and showing the correct update approach.
+
+**Extracted JSON (from WBP):**
+```json
+{
+    "BlueprintName": "WBP_MF_MatchInfo",
+    "DesignerPreview": {
+        "SizeMode": "DesiredOnScreen",
+        "ZoomLevel": 14
+    },
+    "Hierarchy": {
+        "Root": {
+            "Type": "CanvasPanel",
+            "Name": "RootCanvas",
+            "Children": [{
+                "Type": "HorizontalBox",
+                "Name": "ScoreContainer",
+                "Slot": {
+                    "Anchors": {"Min": {"X": 0.5, "Y": 0}, "Max": {"X": 0.5, "Y": 0}},
+                    "Position": {"X": 0, "Y": 10},
+                    "Size": {"X": 400, "Y": 80},
+                    "Alignment": {"X": 0.5, "Y": 0}
+                },
+                "Children": [
+                    {"Type": "VerticalBox", "Name": "TeamABox", "Slot": {"HAlign": "Fill", "VAlign": "Fill", "Size": {"Rule": "Fill", "Value": 1}}, "Children": [
+                        {"Type": "TextBlock", "Name": "TeamANameText", "Slot": {"HAlign": "Center", "VAlign": "Fill", "Size": {"Rule": "Auto"}}},
+                        {"Type": "TextBlock", "Name": "TeamAScoreText", "Slot": {"HAlign": "Center", "VAlign": "Fill", "Size": {"Rule": "Auto"}}}
+                    ]},
+                    {"Type": "TextBlock", "Name": "MatchTimerText", "Slot": {"Padding": {"Left": 15, "Right": 15}, "HAlign": "Center", "VAlign": "Center", "Size": {"Rule": "Auto"}}},
+                    {"Type": "VerticalBox", "Name": "TeamBBox", "Slot": {"HAlign": "Fill", "VAlign": "Fill", "Size": {"Rule": "Fill", "Value": 1}}, "Children": [...]}
+                ]
+            }]
+        }
+    },
+    "Design": {
+        "TeamANameText": {
+            "Font": {"Size": 14, "Typeface": "Bold"},
+            "ColorAndOpacity": {"R": 1, "G": 1, "B": 1, "A": 1}
+        },
+        "TeamAScoreText": {
+            "Font": {"Size": 36, "Typeface": "Bold"},
+            "ColorAndOpacity": {"R": 0.20000000298023224, "G": 0.60000002384185791, "B": 1, "A": 1}
+        }
+    },
+    "Dependencies": ["/Engine/EngineFonts/Roboto.Roboto"]
+}
+```
+
+**Original C++ GetWidgetSpec():**
+```cpp
+"Hierarchy": {
+    "Root": {
+        "Type": "CanvasPanel",
+        "Name": "RootCanvas",
+        "Children": [{
+            "Type": "HorizontalBox",
+            "Name": "ScoreContainer",
+            "Slot": {
+                "Anchors": {"Min": {"X": 0.5, "Y": 0}, "Max": {"X": 0.5, "Y": 0}},
+                "Position": {"X": 0, "Y": 10},
+                "Size": {"X": 400, "Y": 80},
+                "Alignment": {"X": 0.5, "Y": 0}
+            },
+            "Children": [
+                {
+                    "Type": "VerticalBox",
+                    "Name": "TeamABox",
+                    "Children": [
+                        {"Type": "TextBlock", "Name": "TeamANameText", "BindingType": "Optional", "Text": "TEAM A", "FontSize": 14},
+                        {"Type": "TextBlock", "Name": "TeamAScoreText", "BindingType": "Required", "Text": "0", "FontSize": 36}
+                    ]
+                }
+            ]
+        }]
+    }
+},
+"Design": {
+    "TeamAScoreText": {
+        "Font": {"Size": 36, "Typeface": "Bold"},
+        "ColorAndOpacity": {"R": 0.2, "G": 0.6, "B": 1.0, "A": 1.0}
+    }
+},
+"Dependencies": []
+```
+
+**Analysis - What to Update:**
+
+| Extracted | C++ | Action | Reason |
+|-----------|-----|--------|--------|
+| Has `Slot` on children | Missing `Slot` on children | ✅ **Add** if box sizing needed | Controls layout in parent |
+| `0.20000000298023224` | `0.2` | ❌ **Keep 0.2** | Same value, different precision |
+| Has `TeamANameText` in Design | Missing | ✅ **Add** entry | Ensures font styling |
+| Has font dependency | Empty `[]` | ✅ **Add** to array | Documents font usage |
+| Uses `Position`+`Size` | Uses `Position`+`Size` | ❌ **Keep same** | Already matches |
+
+**Correct Update (Design section only):**
+```cpp
+"Design": {
+    "TeamANameText": {
+        "Font": {"Size": 14, "Typeface": "Bold"},
+        "ColorAndOpacity": {"R": 1.0, "G": 1.0, "B": 1.0, "A": 1.0}
+    },
+    "TeamAScoreText": {
+        "Font": {"Size": 36, "Typeface": "Bold"},
+        "ColorAndOpacity": {"R": 0.2, "G": 0.6, "B": 1.0, "A": 1.0},  // Keep readable precision
+        "Justification": "Center"  // Keep existing field
+    },
+    // ... keep all other existing entries
+},
+"Dependencies": [
+    "/Engine/EngineFonts/Roboto.Roboto"  // Add font dependency
+]
+```
+
+**Key Takeaways:**
+1. **Add missing Design entries** - but keep existing fields
+2. **Keep readable float values** - `0.2` equals `0.20000000298023224`
+3. **Keep existing slot format** - don't switch from Position+Size to Offsets
+4. **Add to Dependencies** - don't replace existing array
+5. **Never remove** - `BindingType`, `Text`, `Justification`, etc.
+
+### Real-World Example: Button with Full Styles
+
+**Extracted JSON shows complete button states:**
+```json
+"QuickJoinButton": {
+    "Style": {
+        "Normal": {
+            "TintColor": {"R": 0.30000001192092896, "G": 0.5, "B": 0.30000001192092896, "A": 1}
+        },
+        "Hovered": {
+            "TintColor": {"R": 0.72426801919937134, "G": 0.72426801919937134, "B": 0.72426801919937134, "A": 1}
+        },
+        "Pressed": {
+            "TintColor": {"R": 0.38426598906517029, "G": 0.38426598906517029, "B": 0.38426598906517029, "A": 1}
+        }
+    },
+    "IsFocusable": true
+}
+```
+
+**Original C++ has only Normal:**
+```cpp
+"QuickJoinButton": {
+    "Style": {
+        "Normal": {"TintColor": {"R": 0.3, "G": 0.5, "B": 0.3, "A": 1.0}}
+    }
+}
+```
+
+**Correct Update - Add states, keep readable values:**
+```cpp
+"QuickJoinButton": {
+    "Style": {
+        "Normal": {"TintColor": {"R": 0.3, "G": 0.5, "B": 0.3, "A": 1.0}},
+        "Hovered": {"TintColor": {"R": 0.72, "G": 0.72, "B": 0.72, "A": 1.0}},
+        "Pressed": {"TintColor": {"R": 0.38, "G": 0.38, "B": 0.38, "A": 1.0}}
+    },
+    "IsFocusable": true
+}
+```
+
+**Notes:**
+- Keep `0.3` instead of `0.30000001192092896` (equivalent)
+- Round `0.72426801919937134` to `0.72` (close enough for visual)
+- Add `IsFocusable: true` for keyboard navigation
+
+### Real-World Example: Nested UserWidget Class Path
+
+**Extracted JSON uses Blueprint path:**
+```json
+{
+    "Type": "UserWidget",
+    "Name": "QuickTeamA",
+    "WidgetClass": "/Game/UI/Widgets/WBP_MF_QuickTeamPanel.WBP_MF_QuickTeamPanel_C",
+    "Slot": {"Padding": {"Right": 20}, "HAlign": "Fill", "VAlign": "Fill", "Size": {"Rule": "Auto"}}
+}
+```
+
+**Original C++ uses Script path:**
+```cpp
+{
+    "Type": "UserWidget",
+    "Name": "QuickTeamA",
+    "WidgetClass": "/Script/P_MiniFootball.MF_QuickTeamPanel",
+    "Slot": {"Padding": {"Right": 20}}
+}
+```
+
+**Correct Update - Keep Script path, add Slot fields:**
+```cpp
+{
+    "Type": "UserWidget",
+    "Name": "QuickTeamA",
+    "WidgetClass": "/Script/P_MiniFootball.MF_QuickTeamPanel",
+    "Slot": {"Padding": {"Right": 20}, "HAlign": "Fill", "VAlign": "Fill", "Size": {"Rule": "Auto"}}
+}
+```
+
+**Notes:**
+- **Keep `/Script/...` path** - MWCS resolves both, but Script path is more stable
+- Add the Slot fields if sizing is needed
+
+### Real-World Example: Border with Design
+
+**Extracted JSON:**
+```json
+"Design": {
+    "PanelBorder": {
+        "BrushColor": {
+            "R": 0.15000000596046448,
+            "G": 0.15000000596046448,
+            "B": 0.15000000596046448,
+            "A": 0.85000002384185791
+        },
+        "Padding": {"Left": 8, "Top": 6, "Right": 8, "Bottom": 6}
+    }
+}
+```
+
+**Original C++ (same values, readable):**
+```cpp
+"Design": {
+    "PanelBorder": {
+        "BrushColor": {"R": 0.15, "G": 0.15, "B": 0.15, "A": 0.85},
+        "Padding": {"Left": 8, "Top": 6, "Right": 8, "Bottom": 6}
+    }
+}
+```
+
+**Correct Action: NO CHANGE NEEDED**
+
+The C++ values are equivalent - `0.15` equals `0.15000000596046448`. If values match (accounting for float precision), no update is required.
+
+### Real-World Example: Box Slots with Size.Rule
+
+**Extracted shows Size.Rule on all children:**
+```json
+{
+    "Type": "VerticalBox",
+    "Name": "TeamABox",
+    "Slot": {"HAlign": "Fill", "VAlign": "Fill", "Size": {"Rule": "Fill", "Value": 1}},
+    "Children": [
+        {"Type": "TextBlock", "Name": "TeamANameText", "Slot": {"HAlign": "Center", "VAlign": "Fill", "Size": {"Rule": "Auto"}}},
+        {"Type": "TextBlock", "Name": "TeamAScoreText", "Slot": {"HAlign": "Center", "VAlign": "Fill", "Size": {"Rule": "Auto"}}}
+    ]
+}
+```
+
+**Original C++ has no Slot on children:**
+```cpp
+{
+    "Type": "VerticalBox",
+    "Name": "TeamABox",
+    "Children": [
+        {"Type": "TextBlock", "Name": "TeamANameText", "BindingType": "Optional", "Text": "TEAM A"},
+        {"Type": "TextBlock", "Name": "TeamAScoreText", "BindingType": "Required", "Text": "0"}
+    ]
+}
+```
+
+**Correct Update - Add Slot but keep other fields:**
+```cpp
+{
+    "Type": "VerticalBox",
+    "Name": "TeamABox",
+    "Slot": {"HAlign": "Fill", "VAlign": "Fill", "Size": {"Rule": "Fill", "Value": 1}},
+    "Children": [
+        {"Type": "TextBlock", "Name": "TeamANameText", "BindingType": "Optional", "Text": "TEAM A", 
+         "Slot": {"HAlign": "Center", "VAlign": "Fill", "Size": {"Rule": "Auto"}}},
+        {"Type": "TextBlock", "Name": "TeamAScoreText", "BindingType": "Required", "Text": "0",
+         "Slot": {"HAlign": "Center", "VAlign": "Fill", "Size": {"Rule": "Auto"}}}
+    ]
+}
+```
+
+**Notes:**
+- **Keep `BindingType`** - not extracted but required for C++ binding
+- **Keep `Text`** - default text for preview
+- **Add `Slot`** - for proper box sizing behavior
 
 ## Commandlets (CI / Headless)
 

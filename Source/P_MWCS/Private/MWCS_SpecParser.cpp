@@ -663,6 +663,73 @@ static bool ParseHierarchyNode(const TSharedPtr<FJsonObject> &NodeObj, FMWCS_Hie
     return true;
 }
 
+static void ParseDependencies(const TSharedPtr<FJsonObject> &RootObj, TArray<FString> &OutDeps)
+{
+    OutDeps.Reset();
+
+    if (!RootObj.IsValid())
+    {
+        return;
+    }
+
+    const TArray<TSharedPtr<FJsonValue>> *DepsArr = nullptr;
+    if (!RootObj->TryGetArrayField(TEXT("Dependencies"), DepsArr) || !DepsArr)
+    {
+        return;
+    }
+
+    for (const TSharedPtr<FJsonValue> &V : *DepsArr)
+    {
+        FString S;
+        if (V.IsValid() && V->TryGetString(S) && !S.IsEmpty())
+        {
+            OutDeps.Add(S);
+        }
+    }
+}
+
+static void ParseDesign(const TSharedPtr<FJsonObject> &RootObj, TMap<FName, TSharedPtr<FJsonObject>> &OutDesign)
+{
+    OutDesign.Reset();
+
+    if (!RootObj.IsValid())
+    {
+        return;
+    }
+
+    const TSharedPtr<FJsonObject> *DesignObjPtr = nullptr;
+    if (!RootObj->TryGetObjectField(TEXT("Design"), DesignObjPtr) || !DesignObjPtr || !DesignObjPtr->IsValid())
+    {
+        return;
+    }
+
+    const TSharedPtr<FJsonObject> DesignObj = *DesignObjPtr;
+    for (const TPair<FString, TSharedPtr<FJsonValue>> &KV : DesignObj->Values)
+    {
+        if (KV.Key.IsEmpty() || !KV.Value.IsValid() || KV.Value->Type != EJson::Object)
+        {
+            continue;
+        }
+
+        TSharedPtr<FJsonObject> EntryObj = KV.Value->AsObject();
+        if (!EntryObj.IsValid())
+        {
+            continue;
+        }
+
+        // Support both:
+        //  - "Design": { "WidgetName": { ... } }
+        //  - "Design": { "WidgetName": { "Properties": { ... } } }
+        const TSharedPtr<FJsonObject> *PropsObjPtr = nullptr;
+        if (EntryObj->TryGetObjectField(TEXT("Properties"), PropsObjPtr) && PropsObjPtr && PropsObjPtr->IsValid())
+        {
+            EntryObj = *PropsObjPtr;
+        }
+
+        OutDesign.Add(FName(*KV.Key), EntryObj);
+    }
+}
+
 bool FMWCS_SpecParser::ParseSpecJson(const FString &JsonString, FMWCS_WidgetSpec &OutSpec, FMWCS_Report &InOutReport, const FString &Context)
 {
     TSharedPtr<FJsonObject> RootObj;
@@ -741,5 +808,8 @@ bool FMWCS_SpecParser::ParseSpecJson(const FString &JsonString, FMWCS_WidgetSpec
     }
     OutSpec.HierarchyRoot = MoveTemp(RootNode);
     OutSpec.Bindings = MoveTemp(Bindings);
+
+    ParseDesign(RootObj, OutSpec.Design);
+    ParseDependencies(RootObj, OutSpec.Dependencies);
     return true;
 }

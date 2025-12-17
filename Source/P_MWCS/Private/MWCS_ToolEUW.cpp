@@ -13,6 +13,8 @@
 #include "EditorUtilityLibrary.h"
 #include "WidgetBlueprint.h"
 
+#include "Blueprint/WidgetBlueprintGeneratedClass.h"
+
 #include "Blueprint/WidgetTree.h"
 #include "Components/ContentWidget.h"
 #include "Components/PanelWidget.h"
@@ -449,6 +451,110 @@ static void MWCS_TryAddDependency(TSet<FString> &OutDeps, const UObject *Obj)
     }
 }
 
+static bool MWCS_TryGetBoolPropertyByName(UObject *Obj, const TCHAR *PropName, bool &OutValue)
+{
+    if (!Obj)
+    {
+        return false;
+    }
+
+    if (FProperty *Prop = Obj->GetClass()->FindPropertyByName(FName(PropName)))
+    {
+        if (FBoolProperty *BoolProp = CastField<FBoolProperty>(Prop))
+        {
+            OutValue = BoolProp->GetPropertyValue_InContainer(Obj);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool MWCS_TryGetIntPropertyByName(UObject *Obj, const TCHAR *PropName, int32 &OutValue)
+{
+    if (!Obj)
+    {
+        return false;
+    }
+
+    if (FProperty *Prop = Obj->GetClass()->FindPropertyByName(FName(PropName)))
+    {
+        if (FIntProperty *IntProp = CastField<FIntProperty>(Prop))
+        {
+            OutValue = IntProp->GetPropertyValue_InContainer(Obj);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void MWCS_ExportDesignerPreview(UWidgetBlueprint *WidgetBlueprint, TSharedPtr<FJsonObject> &Root)
+{
+    if (!WidgetBlueprint || !Root.IsValid())
+    {
+        return;
+    }
+
+    TSharedPtr<FJsonObject> Preview = MakeShared<FJsonObject>();
+
+    // Persistent tier: DesignSizeMode + DesignTimeSize (when Custom)
+    FString SizeModeStr = TEXT("FillScreen");
+    FVector2D CustomSize = FVector2D::ZeroVector;
+
+    if (UWidgetBlueprintGeneratedClass *GeneratedClass = Cast<UWidgetBlueprintGeneratedClass>(WidgetBlueprint->GeneratedClass))
+    {
+        if (UUserWidget *CDO = Cast<UUserWidget>(GeneratedClass->GetDefaultObject()))
+        {
+#if WITH_EDITORONLY_DATA
+            switch (CDO->DesignSizeMode)
+            {
+            case EDesignPreviewSizeMode::Desired:
+                SizeModeStr = TEXT("Desired");
+                break;
+            case EDesignPreviewSizeMode::DesiredOnScreen:
+                SizeModeStr = TEXT("DesiredOnScreen");
+                break;
+            case EDesignPreviewSizeMode::Custom:
+                SizeModeStr = TEXT("Custom");
+                CustomSize = CDO->DesignTimeSize;
+                break;
+            case EDesignPreviewSizeMode::FillScreen:
+            default:
+                SizeModeStr = TEXT("FillScreen");
+                break;
+            }
+#endif
+        }
+    }
+
+    Preview->SetStringField(TEXT("SizeMode"), SizeModeStr);
+    if (SizeModeStr.Equals(TEXT("Custom"), ESearchCase::IgnoreCase) && CustomSize.X > 0.0f && CustomSize.Y > 0.0f)
+    {
+        TSharedPtr<FJsonObject> CustomSizeObj = MakeShared<FJsonObject>();
+        CustomSizeObj->SetNumberField(TEXT("X"), CustomSize.X);
+        CustomSizeObj->SetNumberField(TEXT("Y"), CustomSize.Y);
+        Preview->SetObjectField(TEXT("CustomSize"), CustomSizeObj);
+    }
+
+    // Best-effort tier: ZoomLevel + ShowGrid (may not exist on all engine versions)
+    int32 ZoomLevel = 14;
+    bool bShowGrid = true;
+
+    (void)MWCS_TryGetIntPropertyByName(WidgetBlueprint, TEXT("ZoomLevel"), ZoomLevel);
+    (void)MWCS_TryGetIntPropertyByName(WidgetBlueprint, TEXT("DesignerZoomLevel"), ZoomLevel);
+    (void)MWCS_TryGetIntPropertyByName(WidgetBlueprint, TEXT("PreviewZoomLevel"), ZoomLevel);
+
+    (void)MWCS_TryGetBoolPropertyByName(WidgetBlueprint, TEXT("bShowDesignGrid"), bShowGrid);
+    (void)MWCS_TryGetBoolPropertyByName(WidgetBlueprint, TEXT("bShowGrid"), bShowGrid);
+    (void)MWCS_TryGetBoolPropertyByName(WidgetBlueprint, TEXT("bShowDesignerGrid"), bShowGrid);
+
+    Preview->SetNumberField(TEXT("ZoomLevel"), ZoomLevel);
+    Preview->SetBoolField(TEXT("ShowGrid"), bShowGrid);
+
+    Root->SetObjectField(TEXT("DesignerPreview"), Preview);
+}
+
 static bool MWCS_ExportInlineProperties(UWidget *Widget, TSharedPtr<FJsonObject> &NodeObj, bool bIncludePropertiesSection)
 {
     if (!bIncludePropertiesSection || !Widget)
@@ -778,10 +884,6 @@ bool UMWCS_ToolEUW::ExportWidgetBlueprintHierarchyToJson(UWidgetBlueprint *Widge
     TSharedPtr<FJsonObject> Root = MakeShared<FJsonObject>();
     Root->SetStringField(TEXT("BlueprintName"), WidgetBlueprint->GetName());
     Root->SetStringField(TEXT("Version"), TEXT("1.0.0"));
-    if (WidgetBlueprint->ParentClass)
-    {
-        Root->SetStringField(TEXT("WidgetClass"), WidgetBlueprint->ParentClass->GetName());
-    }
     if (bIncludeSourceAssetField)
     {
         // Not part of GetWidgetSpec in project, but still useful for traceability when enabled.
@@ -794,13 +896,8 @@ bool UMWCS_ToolEUW::ExportWidgetBlueprintHierarchyToJson(UWidgetBlueprint *Widge
     }
 
     // Match GetWidgetSpec: DesignerPreview exists at root.
-    {
-        TSharedPtr<FJsonObject> Preview = MakeShared<FJsonObject>();
-        Preview->SetStringField(TEXT("SizeMode"), TEXT("Desired"));
-        Preview->SetNumberField(TEXT("ZoomLevel"), 14);
-        Preview->SetBoolField(TEXT("ShowGrid"), true);
-        Root->SetObjectField(TEXT("DesignerPreview"), Preview);
-    }
+    // Extract from the blueprint when possible instead of hardcoding.
+    MWCS_ExportDesignerPreview(WidgetBlueprint, Root);
 
     // Design entries are stored at the root keyed by widget name.
     TSharedPtr<FJsonObject> DesignMap;
