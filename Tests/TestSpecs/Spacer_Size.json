@@ -1,0 +1,40 @@
+{
+    "BlueprintName": "WBP_Test_Spacer",
+    "ParentClass": "/Script/UMG.UserWidget",
+    "Version": "1.0.0",
+    "DesignerPreview": {
+        "SizeMode": "DesiredOnScreen"
+    },
+    "Hierarchy": {
+        "Root": {
+            "Type": "VerticalBox",
+            "Name": "VBox",
+            "Children": [
+                {
+                    "Type": "TextBlock",
+                    "Name": "TopText",
+                    "Text": "Top"
+                },
+                {
+                    "Type": "Spacer",
+                    "Name": "Space",
+                    "Properties": {
+                        "Size": {
+                            "X": 0,
+                            "Y": 50
+                        }
+                    }
+                },
+                {
+                    "Type": "TextBlock",
+                    "Name": "BottomText",
+                    "Text": "Bottom"
+                }
+            ]
+        }
+    },
+    "Bindings": {
+        "Required": [],
+        "Optional": []
+    }
+}

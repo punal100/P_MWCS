@@ -1,0 +1,43 @@
+{
+    "BlueprintName": "WBP_Test_CanvasZOrder",
+    "ParentClass": "/Script/UMG.UserWidget",
+    "Version": "1.0.0",
+    "DesignerPreview": {
+        "SizeMode": "DesiredOnScreen"
+    },
+    "Hierarchy": {
+        "Root": {
+            "Type": "CanvasPanel",
+            "Name": "RootCanvas",
+            "Children": [
+                {
+                    "Type": "TextBlock",
+                    "Name": "ZOrderedText",
+                    "Text": "I am on top",
+                    "Slot": {
+                        "Anchors": {
+                            "Min": {
+                                "X": 0.5,
+                                "Y": 0.5
+                            },
+                            "Max": {
+                                "X": 0.5,
+                                "Y": 0.5
+                            }
+                        },
+                        "Alignment": {
+                            "X": 0.5,
+                            "Y": 0.5
+                        },
+                        "AutoSize": true,
+                        "ZOrder": 10
+                    }
+                }
+            ]
+        }
+    },
+    "Bindings": {
+        "Required": [],
+        "Optional": []
+    }
+}

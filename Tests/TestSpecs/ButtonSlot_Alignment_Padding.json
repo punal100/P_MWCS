@@ -1,0 +1,61 @@
+{
+    "BlueprintName": "WBP_Test_ButtonSlot",
+    "ParentClass": "/Script/UMG.UserWidget",
+    "Version": "1.0.0",
+    "DesignerPreview": {
+        "SizeMode": "DesiredOnScreen"
+    },
+    "Hierarchy": {
+        "Root": {
+            "Type": "CanvasPanel",
+            "Name": "RootCanvas",
+            "Children": [
+                {
+                    "Type": "Button",
+                    "Name": "TestButton",
+                    "Slot": {
+                        "Anchors": {
+                            "Min": {
+                                "X": 0.5,
+                                "Y": 0.5
+                            },
+                            "Max": {
+                                "X": 0.5,
+                                "Y": 0.5
+                            }
+                        },
+                        "Size": {
+                            "X": 200,
+                            "Y": 100
+                        },
+                        "Alignment": {
+                            "X": 0.5,
+                            "Y": 0.5
+                        }
+                    },
+                    "Children": [
+                        {
+                            "Type": "TextBlock",
+                            "Name": "ButtonText",
+                            "Text": "Centered Text",
+                            "Slot": {
+                                "HAlign": "Center",
+                                "VAlign": "Center",
+                                "Padding": {
+                                    "Left": 10,
+                                    "Top": 5,
+                                    "Right": 10,
+                                    "Bottom": 5
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+    "Bindings": {
+        "Required": [],
+        "Optional": []
+    }
+}

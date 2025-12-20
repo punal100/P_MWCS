@@ -641,6 +641,32 @@ static bool BuildNode(
     // Apply slot/layout metadata when available.
     ApplySlotMeta(Current, Node);
 
+    // Apply specific widget properties
+    if (Node.Type == TEXT("ScrollBox"))
+    {
+        if (UScrollBox *SB = Cast<UScrollBox>(Current))
+        {
+            if (Node.bHasOrientation)
+            {
+                SB->SetOrientation(Node.Orientation);
+            }
+            if (Node.bHasScrollBarVisibility)
+            {
+                SB->SetScrollBarVisibility(Node.ScrollBarVisibility);
+            }
+        }
+    }
+    else if (Node.Type == TEXT("Spacer"))
+    {
+        if (USpacer *Sp = Cast<USpacer>(Current))
+        {
+            if (Node.bHasSpacerSize)
+            {
+                Sp->SetSize(Node.SpacerSize);
+            }
+        }
+    }
+
     // Apply hierarchy node metadata first, then let GetWidgetSpec-style Design override it.
     if (Node.Type == TEXT("TextBlock"))
     {
@@ -758,6 +784,81 @@ static bool TryParsePaddingObject(const TSharedPtr<FJsonObject> &Obj, FMargin &O
     return true;
 }
 
+// ============================================================================
+// BRUSH APPLICATION HELPERS
+// ============================================================================
+
+static ESlateBrushDrawType::Type ConvertStringToDrawAs(const FString &Str)
+{
+	if (Str.Equals(TEXT("Box"), ESearchCase::IgnoreCase)) return ESlateBrushDrawType::Box;
+	if (Str.Equals(TEXT("Border"), ESearchCase::IgnoreCase)) return ESlateBrushDrawType::Border;
+	if (Str.Equals(TEXT("RoundedBox"), ESearchCase::IgnoreCase)) return ESlateBrushDrawType::RoundedBox;
+	if (Str.Equals(TEXT("NoDrawType"), ESearchCase::IgnoreCase)) return ESlateBrushDrawType::NoDrawType;
+	return ESlateBrushDrawType::Image;
+}
+
+static ESlateBrushTileType::Type ConvertStringToTiling(const FString &Str)
+{
+	if (Str.Equals(TEXT("Horizontal"), ESearchCase::IgnoreCase)) return ESlateBrushTileType::Horizontal;
+	if (Str.Equals(TEXT("Vertical"), ESearchCase::IgnoreCase)) return ESlateBrushTileType::Vertical;
+	if (Str.Equals(TEXT("Both"), ESearchCase::IgnoreCase)) return ESlateBrushTileType::Both;
+	return ESlateBrushTileType::NoTile;
+}
+
+static void MWCS_ApplyBrushProperties(
+	const TSharedPtr<FJsonObject> &BrushObj,
+	FSlateBrush &OutBrush)
+{
+	if (!BrushObj.IsValid()) return;
+	
+	// DrawAs
+	FString DrawAsStr;
+	if (BrushObj->TryGetStringField(TEXT("DrawAs"), DrawAsStr))
+	{
+		OutBrush.DrawAs = ConvertStringToDrawAs(DrawAsStr);
+	}
+	
+	// ImageSize
+	const TSharedPtr<FJsonObject> *SizePtr = nullptr;
+	if (BrushObj->TryGetObjectField(TEXT("ImageSize"), SizePtr) && SizePtr && (*SizePtr).IsValid())
+	{
+		FVector2D Size;
+		if (TryParseVector2D(*SizePtr, Size))
+		{
+			OutBrush.ImageSize = Size;
+		}
+	}
+	
+	// TintColor
+	const TSharedPtr<FJsonObject> *TintPtr = nullptr;
+	if (BrushObj->TryGetObjectField(TEXT("TintColor"), TintPtr) && TintPtr && (*TintPtr).IsValid())
+	{
+		FLinearColor Tint;
+		if (TryParseLinearColor(*TintPtr, Tint))
+		{
+			OutBrush.TintColor = FSlateColor(Tint);
+		}
+	}
+	
+	// Tiling
+	FString TilingStr;
+	if (BrushObj->TryGetStringField(TEXT("Tiling"), TilingStr))
+	{
+		OutBrush.Tiling = ConvertStringToTiling(TilingStr);
+	}
+	
+	// Margin
+	const TSharedPtr<FJsonObject> *MarginPtr = nullptr;
+	if (BrushObj->TryGetObjectField(TEXT("Margin"), MarginPtr) && MarginPtr && (*MarginPtr).IsValid())
+	{
+		FMargin Margin;
+		if (TryParsePaddingObject(*MarginPtr, Margin))
+		{
+			OutBrush.Margin = Margin;
+		}
+	}
+}
+
 static void ApplyDesignMeta(UWidget *Widget, const TSharedPtr<FJsonObject> &DesignObj)
 {
     if (!Widget || !DesignObj.IsValid())
@@ -822,19 +923,67 @@ static void ApplyDesignMeta(UWidget *Widget, const TSharedPtr<FJsonObject> &Desi
             }
         }
 
-        const TSharedPtr<FJsonObject> *ColorObjPtr = nullptr;
-        if (DesignObj->TryGetObjectField(TEXT("ColorAndOpacity"), ColorObjPtr) && ColorObjPtr && ColorObjPtr->IsValid())
-        {
-            FLinearColor C;
-            if (TryParseLinearColor(*ColorObjPtr, C))
-            {
-                Img->SetColorAndOpacity(C);
-            }
-        }
-        return;
-    }
+        		const TSharedPtr<FJsonObject> *ColorObjPtr = nullptr;
+		if (DesignObj->TryGetObjectField(TEXT("ColorAndOpacity"), ColorObjPtr) && ColorObjPtr && (*ColorObjPtr).IsValid())
+		{
+			FLinearColor C;
+			if (TryParseLinearColor(*ColorObjPtr, C))
+			{
+				Img->SetColorAndOpacity(C);
+			}
+		}
+		
+		// NEW: Apply Brush properties
+		const TSharedPtr<FJsonObject> *BrushObjPtr = nullptr;
+		if (DesignObj->TryGetObjectField(TEXT("Brush"), BrushObjPtr) && BrushObjPtr && (*BrushObjPtr).IsValid())
+		{
+			FSlateBrush Brush = Img->GetBrush();
+			MWCS_ApplyBrushProperties(*BrushObjPtr, Brush);
+			Img->SetBrush(Brush);
+		}
+		return;
+	}
 
-    if (UTextBlock *TB = Cast<UTextBlock>(Widget))
+	if (UThrobber *Throbber = Cast<UThrobber>(Widget))
+	{
+		// NumberOfPieces
+		double NumPieces = 0.0;
+		if (DesignObj->TryGetNumberField(TEXT("NumberOfPieces"), NumPieces))
+		{
+			Throbber->SetNumberOfPieces(static_cast<int32>(NumPieces));
+		}
+		
+		// Animation flags
+		bool bAnimH = true;
+		if (DesignObj->TryGetBoolField(TEXT("bAnimateHorizontally"), bAnimH))
+		{
+			Throbber->SetAnimateHorizontally(bAnimH);
+		}
+		
+		bool bAnimV = true;
+		if (DesignObj->TryGetBoolField(TEXT("bAnimateVertically"), bAnimV))
+		{
+			Throbber->SetAnimateVertically(bAnimV);
+		}
+		
+		bool bAnimO = true;
+		if (DesignObj->TryGetBoolField(TEXT("bAnimateOpacity"), bAnimO))
+		{
+			Throbber->SetAnimateOpacity(bAnimO);
+		}
+		
+		// Image brush
+		const TSharedPtr<FJsonObject> *ImageObjPtr = nullptr;
+		if (DesignObj->TryGetObjectField(TEXT("Image"), ImageObjPtr) && ImageObjPtr && (*ImageObjPtr).IsValid())
+		{
+			FSlateBrush ImageBrush = Throbber->GetImage();
+			MWCS_ApplyBrushProperties(*ImageObjPtr, ImageBrush);
+			Throbber->SetImage(ImageBrush);
+		}
+		return;
+	}
+
+	if (UTextBlock *TB = Cast<UTextBlock>(Widget))
     {
         const TSharedPtr<FJsonObject> *FontObjPtr = nullptr;
         if (DesignObj->TryGetObjectField(TEXT("Font"), FontObjPtr) && FontObjPtr && FontObjPtr->IsValid())

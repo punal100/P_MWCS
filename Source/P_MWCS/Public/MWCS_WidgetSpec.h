@@ -60,6 +60,17 @@ struct FMWCS_HierarchyNode
     bool bHasCanvasZOrder = false;
     int32 CanvasZOrder = 0;
 
+    // ScrollBox-specific
+    bool bHasOrientation = false;
+    EOrientation Orientation = EOrientation::Orient_Vertical;
+
+    bool bHasScrollBarVisibility = false;
+    ESlateVisibility ScrollBarVisibility = ESlateVisibility::Visible;
+
+    // Spacer-specific
+    bool bHasSpacerSize = false;
+    FVector2D SpacerSize = FVector2D::ZeroVector;
+
     TArray<FMWCS_HierarchyNode> Children;
 };
 

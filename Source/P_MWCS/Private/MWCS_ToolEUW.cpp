@@ -7,6 +7,7 @@
 #include "Modules/ModuleManager.h"
 
 #include "Components/Button.h"
+#include "Components/ButtonSlot.h"
 #include "Components/MultiLineEditableTextBox.h"
 #include "Components/TextBlock.h"
 
@@ -327,6 +328,22 @@ static void MWCS_ExportSlotLayout(UWidget *Widget, TSharedPtr<FJsonObject> &Node
     TSharedPtr<FJsonObject> SlotObj = MakeShared<FJsonObject>();
     bool bWroteAnything = false;
 
+    auto WriteSlotSizeObj = [&SlotObj, &bWroteAnything](const FSlateChildSize &Size)
+    {
+        TSharedPtr<FJsonObject> SizeObj = MakeShared<FJsonObject>();
+        if (Size.SizeRule == ESlateSizeRule::Fill)
+        {
+            SizeObj->SetStringField(TEXT("Rule"), TEXT("Fill"));
+            SizeObj->SetNumberField(TEXT("Value"), Size.Value);
+        }
+        else
+        {
+            SizeObj->SetStringField(TEXT("Rule"), TEXT("Auto"));
+        }
+        SlotObj->SetObjectField(TEXT("Size"), SizeObj);
+        bWroteAnything = true;
+    };
+
     auto WritePaddingHAlignVAlign = [&SlotObj, &bWroteAnything](const FMargin &Padding, EHorizontalAlignment HAlign, EVerticalAlignment VAlign, bool bHasPadding, bool bHasH, bool bHasV)
     {
         if (bHasPadding)
@@ -350,38 +367,13 @@ static void MWCS_ExportSlotLayout(UWidget *Widget, TSharedPtr<FJsonObject> &Node
     {
         WritePaddingHAlignVAlign(HB->GetPadding(), HB->GetHorizontalAlignment(), HB->GetVerticalAlignment(), true, true, true);
 
-        const FSlateChildSize Size = HB->GetSize();
-        if (Size.SizeRule == ESlateSizeRule::Fill)
-        {
-            SlotObj->SetNumberField(TEXT("Fill"), Size.Value);
-            bWroteAnything = true;
-        }
-        else
-        {
-            // Explicit Auto size object to be MWCS parser compatible.
-            TSharedPtr<FJsonObject> SizeObj = MakeShared<FJsonObject>();
-            SizeObj->SetStringField(TEXT("Rule"), TEXT("Auto"));
-            SlotObj->SetObjectField(TEXT("Size"), SizeObj);
-            bWroteAnything = true;
-        }
+        WriteSlotSizeObj(HB->GetSize());
     }
     else if (UVerticalBoxSlot *VB = Cast<UVerticalBoxSlot>(Slot))
     {
         WritePaddingHAlignVAlign(VB->GetPadding(), VB->GetHorizontalAlignment(), VB->GetVerticalAlignment(), true, true, true);
 
-        const FSlateChildSize Size = VB->GetSize();
-        if (Size.SizeRule == ESlateSizeRule::Fill)
-        {
-            SlotObj->SetNumberField(TEXT("Fill"), Size.Value);
-            bWroteAnything = true;
-        }
-        else
-        {
-            TSharedPtr<FJsonObject> SizeObj = MakeShared<FJsonObject>();
-            SizeObj->SetStringField(TEXT("Rule"), TEXT("Auto"));
-            SlotObj->SetObjectField(TEXT("Size"), SizeObj);
-            bWroteAnything = true;
-        }
+        WriteSlotSizeObj(VB->GetSize());
     }
     else if (UOverlaySlot *OV = Cast<UOverlaySlot>(Slot))
     {
@@ -395,19 +387,11 @@ static void MWCS_ExportSlotLayout(UWidget *Widget, TSharedPtr<FJsonObject> &Node
     {
         WritePaddingHAlignVAlign(SS->GetPadding(), SS->GetHorizontalAlignment(), SS->GetVerticalAlignment(), true, true, true);
 
-        const FSlateChildSize Size = SS->GetSize();
-        if (Size.SizeRule == ESlateSizeRule::Fill)
-        {
-            SlotObj->SetNumberField(TEXT("Fill"), Size.Value);
-            bWroteAnything = true;
-        }
-        else
-        {
-            TSharedPtr<FJsonObject> SizeObj = MakeShared<FJsonObject>();
-            SizeObj->SetStringField(TEXT("Rule"), TEXT("Auto"));
-            SlotObj->SetObjectField(TEXT("Size"), SizeObj);
-            bWroteAnything = true;
-        }
+        WriteSlotSizeObj(SS->GetSize());
+    }
+    else if (UButtonSlot *BtnSlot = Cast<UButtonSlot>(Slot))
+    {
+        WritePaddingHAlignVAlign(BtnSlot->GetPadding(), BtnSlot->GetHorizontalAlignment(), BtnSlot->GetVerticalAlignment(), true, true, true);
     }
 
     if (bIncludeCanvasSlot)
@@ -427,6 +411,17 @@ static void MWCS_ExportSlotLayout(UWidget *Widget, TSharedPtr<FJsonObject> &Node
             MWCS_SetVector2Object(SlotObj, TEXT("Position"), CS->GetPosition());
             MWCS_SetVector2Object(SlotObj, TEXT("Size"), CS->GetSize());
             MWCS_SetVector2Object(SlotObj, TEXT("Alignment"), CS->GetAlignment());
+
+            if (CS->GetZOrder() != 0)
+            {
+                SlotObj->SetNumberField(TEXT("ZOrder"), CS->GetZOrder());
+            }
+
+            if (CS->GetAutoSize())
+            {
+                SlotObj->SetBoolField(TEXT("AutoSize"), true);
+            }
+
             bWroteAnything = true;
         }
     }
@@ -435,6 +430,92 @@ static void MWCS_ExportSlotLayout(UWidget *Widget, TSharedPtr<FJsonObject> &Node
     {
         NodeObj->SetObjectField(TEXT("Slot"), SlotObj);
     }
+}
+
+// ============================================================================
+// BRUSH EXTRACTION HELPERS
+// ============================================================================
+
+static FString ConvertDrawAsToString(ESlateBrushDrawType::Type DrawAs)
+{
+	switch (DrawAs)
+	{
+		case ESlateBrushDrawType::Image: return TEXT("Image");
+		case ESlateBrushDrawType::Box: return TEXT("Box");
+		case ESlateBrushDrawType::Border: return TEXT("Border");
+		case ESlateBrushDrawType::RoundedBox: return TEXT("RoundedBox");
+		case ESlateBrushDrawType::NoDrawType: return TEXT("NoDrawType");
+		default: return TEXT("Image");
+	}
+}
+
+static FString ConvertTilingToString(ESlateBrushTileType::Type Tiling)
+{
+	switch (Tiling)
+	{
+		case ESlateBrushTileType::NoTile: return TEXT("NoTile");
+		case ESlateBrushTileType::Horizontal: return TEXT("Horizontal");
+		case ESlateBrushTileType::Vertical: return TEXT("Vertical");
+		case ESlateBrushTileType::Both: return TEXT("Both");
+		default: return TEXT("NoTile");
+	}
+}
+
+static void MWCS_ExtractBrushProperties(
+	const FSlateBrush &Brush,
+	TSharedPtr<FJsonObject> &OutDesignObj,
+	const FString &BrushFieldName = TEXT("Brush"),
+	bool bIncludeImageSize = false)
+{
+	TSharedPtr<FJsonObject> BrushObj = MakeShared<FJsonObject>();
+	bool bHasAny = false;
+	
+	// DrawAs (if non-default)
+	if (Brush.DrawAs != ESlateBrushDrawType::Image)
+	{
+		BrushObj->SetStringField(TEXT("DrawAs"), ConvertDrawAsToString(Brush.DrawAs));
+		bHasAny = true;
+	}
+	
+	// ImageSize (optional - controlled by caller)
+	if (bIncludeImageSize && (Brush.ImageSize.X > 0.01f || Brush.ImageSize.Y > 0.01f))
+	{
+		MWCS_SetVector2Object(BrushObj, TEXT("ImageSize"), Brush.ImageSize);
+		bHasAny = true;
+	}
+	
+	// TintColor (if not default white)
+	const FLinearColor TintColor = Brush.TintColor.GetSpecifiedColor();
+	if (!TintColor.Equals(FLinearColor::White, 0.001f))
+	{
+		MWCS_SetColorObject(BrushObj, TEXT("TintColor"), TintColor);
+		bHasAny = true;
+	}
+	
+	// Tiling (if not NoTile)
+	if (Brush.Tiling != ESlateBrushTileType::NoTile)
+	{
+		BrushObj->SetStringField(TEXT("Tiling"), ConvertTilingToString(Brush.Tiling));
+		bHasAny = true;
+	}
+	
+	// Margin (if non-zero)
+	const FMargin &Margin = Brush.Margin;
+	if (Margin.Left > 0.001f || Margin.Top > 0.001f || Margin.Right > 0.001f || Margin.Bottom > 0.001f)
+	{
+		TSharedPtr<FJsonObject> MarginObj = MakeShared<FJsonObject>();
+		MarginObj->SetNumberField(TEXT("Left"), Margin.Left);
+		MarginObj->SetNumberField(TEXT("Top"), Margin.Top);
+		MarginObj->SetNumberField(TEXT("Right"), Margin.Right);
+		MarginObj->SetNumberField(TEXT("Bottom"), Margin.Bottom);
+		BrushObj->SetObjectField(TEXT("Margin"), MarginObj);
+		bHasAny = true;
+	}
+	
+	if (bHasAny)
+	{
+		OutDesignObj->SetObjectField(BrushFieldName, BrushObj);
+	}
 }
 
 static void MWCS_TryAddDependency(TSet<FString> &OutDeps, const UObject *Obj)
@@ -558,22 +639,169 @@ static void MWCS_ExportDesignerPreview(UWidgetBlueprint *WidgetBlueprint, TShare
 static bool MWCS_ExportInlineProperties(UWidget *Widget, TSharedPtr<FJsonObject> &NodeObj, bool bIncludePropertiesSection)
 {
     if (!bIncludePropertiesSection || !Widget)
+{
+    return false;
+}
+
+TSharedPtr<FJsonObject> PropsObj = MakeShared<FJsonObject>();
+bool bHasProperties = false;
+
+// Infer properties for VerticalBox (SizeToContent, Spacing)
+if (UVerticalBox *VBox = Cast<UVerticalBox>(Widget))
+{
+    bool bAllAuto = true;
+    float UniformSpacing = -1.0f;
+    bool bUniformSpacing = true;
+    int32 ChildCount = VBox->GetChildrenCount();
+
+    for (int32 i = 0; i < ChildCount; ++i)
     {
-        return false;
+        if (UWidget *Child = VBox->GetChildAt(i))
+        {
+            if (UVerticalBoxSlot *VBSlot = Cast<UVerticalBoxSlot>(Child->Slot))
+            {
+                if (VBSlot->GetSize().SizeRule != ESlateSizeRule::Automatic)
+                {
+                    bAllAuto = false;
+                }
+
+                // Check uniform spacing (top padding for items after first)
+                // We treat the first item (i=0) as having 0 'spacing' padding usually, or ignore it.
+                // The 'Spacing' property conceptually applies between items.
+                // Implementation: If we see Spacing=N, we expect Child[1].Top=N, Child[2].Top=N...
+
+                float TopPad = VBSlot->GetPadding().Top;
+                if (i == 1)
+                {
+                    UniformSpacing = TopPad;
+                }
+                else if (i > 1)
+                {
+                    if (!FMath::IsNearlyEqual(TopPad, UniformSpacing, 0.001f))
+                    {
+                        bUniformSpacing = false;
+                    }
+                }
+            }
+        }
     }
 
-    // Best-effort: only emit when we have something concrete.
-    TSharedPtr<FJsonObject> PropsObj = MakeShared<FJsonObject>();
-    bool bHasAny = false;
-
-    // Example: Border has padding (but in project specs this tends to live in Design; keep Properties minimal).
-    // Add more here only when we can confidently match your GetWidgetSpec conventions.
-
-    if (bHasAny)
+    if (bAllAuto && ChildCount > 0)
     {
-        NodeObj->SetObjectField(TEXT("Properties"), PropsObj);
+        PropsObj->SetBoolField(TEXT("SizeToContent"), true);
+        bHasProperties = true;
     }
-    return bHasAny;
+
+    // Only emit spacing if we have at least 2 items and positive consistent spacing
+    if (bUniformSpacing && UniformSpacing > 0.001f && ChildCount > 1)
+    {
+        PropsObj->SetNumberField(TEXT("Spacing"), UniformSpacing);
+        bHasProperties = true;
+    }
+}
+// Infer properties for HorizontalBox (SizeToContent, Spacing)
+else if (UHorizontalBox *HBox = Cast<UHorizontalBox>(Widget))
+{
+    bool bAllAuto = true;
+    float UniformSpacing = -1.0f;
+    bool bUniformSpacing = true;
+    int32 ChildCount = HBox->GetChildrenCount();
+
+    for (int32 i = 0; i < ChildCount; ++i)
+    {
+        if (UWidget *Child = HBox->GetChildAt(i))
+        {
+            if (UHorizontalBoxSlot *HBSlot = Cast<UHorizontalBoxSlot>(Child->Slot))
+            {
+                if (HBSlot->GetSize().SizeRule != ESlateSizeRule::Automatic)
+                {
+                    bAllAuto = false;
+                }
+
+                float LeftPad = HBSlot->GetPadding().Left;
+                if (i == 1)
+                {
+                    UniformSpacing = LeftPad;
+                }
+                else if (i > 1)
+                {
+                    if (!FMath::IsNearlyEqual(LeftPad, UniformSpacing, 0.001f))
+                    {
+                        bUniformSpacing = false;
+                    }
+                }
+            }
+        }
+    }
+
+    if (bAllAuto && ChildCount > 0)
+    {
+        PropsObj->SetBoolField(TEXT("SizeToContent"), true);
+        bHasProperties = true;
+    }
+
+    if (bUniformSpacing && UniformSpacing > 0.001f && ChildCount > 1)
+    {
+        PropsObj->SetNumberField(TEXT("Spacing"), UniformSpacing);
+        bHasProperties = true;
+    }
+}
+// ScrollBox Properties
+else if (UScrollBox *SB = Cast<UScrollBox>(Widget))
+{
+    if (SB->GetOrientation() == EOrientation::Orient_Horizontal)
+    {
+        PropsObj->SetStringField(TEXT("Orientation"), TEXT("Horizontal"));
+        bHasProperties = true;
+    }
+
+    ESlateVisibility Vis = SB->GetScrollBarVisibility();
+    if (Vis != ESlateVisibility::Visible)
+    {
+        FString VisStr;
+        switch (Vis)
+        {
+        case ESlateVisibility::Collapsed:
+            VisStr = TEXT("Collapsed");
+            break;
+        case ESlateVisibility::Hidden:
+            VisStr = TEXT("Hidden");
+            break;
+        case ESlateVisibility::HitTestInvisible:
+            VisStr = TEXT("HitTestInvisible");
+            break;
+        case ESlateVisibility::SelfHitTestInvisible:
+            VisStr = TEXT("SelfHitTestInvisible");
+            break;
+        default:
+            break;
+        }
+        if (!VisStr.IsEmpty())
+        {
+            PropsObj->SetStringField(TEXT("ScrollBarVisibility"), VisStr);
+            bHasProperties = true;
+        }
+    }
+}
+// Spacer Properties
+else if (USpacer *Sp = Cast<USpacer>(Widget))
+{
+    FVector2D Size = Sp->GetSize();
+    if (Size.X > 0.0f || Size.Y > 0.0f)
+    {
+        TSharedPtr<FJsonObject> SizeObj = MakeShared<FJsonObject>();
+        SizeObj->SetNumberField(TEXT("X"), Size.X);
+        SizeObj->SetNumberField(TEXT("Y"), Size.Y);
+        PropsObj->SetObjectField(TEXT("Size"), SizeObj);
+        bHasProperties = true;
+    }
+}
+
+if (bHasProperties)
+{
+    NodeObj->SetObjectField(TEXT("Properties"), PropsObj);
+}
+    return bHasProperties;
 }
 
 static void MWCS_ExportDesignEntry(UWidget *Widget,
@@ -632,10 +860,20 @@ static void MWCS_ExportDesignEntry(UWidget *Widget,
     else if (UImage *Img = Cast<UImage>(Widget))
     {
         const FSlateBrush &Brush = Img->GetBrush();
-        MWCS_SetVector2Object(DesignObj, TEXT("Size"), FVector2D(Brush.ImageSize.X, Brush.ImageSize.Y));
+        
+        // Legacy "Size" field (for backward compatibility)
+        if (Brush.ImageSize.X > 0.01f || Brush.ImageSize.Y > 0.01f)
+        {
+            MWCS_SetVector2Object(DesignObj, TEXT("Size"), Brush.ImageSize);
+        }
+        
+        // ColorAndOpacity
         MWCS_SetColorObject(DesignObj, TEXT("ColorAndOpacity"), Img->GetColorAndOpacity());
+        
+        // NEW: Complete brush properties  (ImageSize in legacy "Size", not in Brush)
+        MWCS_ExtractBrushProperties(Brush, DesignObj, TEXT("Brush"), false);
+        
         bHasAny = true;
-
         MWCS_TryAddDependency(OutDependencies, Brush.GetResourceObject());
     }
     else if (UTextBlock *TB = Cast<UTextBlock>(Widget))
@@ -667,6 +905,43 @@ static void MWCS_ExportDesignEntry(UWidget *Widget,
         MWCS_SetPaddingMinimal(DesignObj, TEXT("Padding"), Border->GetPadding());
         bHasAny = true;
         MWCS_TryAddDependency(OutDependencies, Border->Background.GetResourceObject());
+    }
+    else if (UThrobber *Throbber = Cast<UThrobber>(Widget))
+    {
+        // NumberOfPieces (if non-default 3)
+        const int32 NumPieces = Throbber->GetNumberOfPieces();
+        if (NumPieces != 3)
+        {
+            DesignObj->SetNumberField(TEXT("NumberOfPieces"), NumPieces);
+            bHasAny = true;
+        }
+        
+        // Animation flags (only if NOT all true)
+        const bool bAnimH = Throbber->IsAnimateHorizontally();
+        const bool bAnimV = Throbber->IsAnimateVertically();
+        const bool bAnimO = Throbber->IsAnimateOpacity();
+        
+        if (!bAnimH)
+        {
+            DesignObj->SetBoolField(TEXT("bAnimateHorizontally"), false);
+            bHasAny = true;
+        }
+        if (!bAnimV)
+        {
+            DesignObj->SetBoolField(TEXT("bAnimateVertically"), false);
+            bHasAny = true;
+        }
+        if (!bAnimO)
+        {
+            DesignObj->SetBoolField(TEXT("bAnimateOpacity"), false);
+            bHasAny = true;
+        }
+        
+        // Image brush (include ImageSize for Throbber)
+        const FSlateBrush &ImageBrush = Throbber->GetImage();
+        MWCS_ExtractBrushProperties(ImageBrush, DesignObj, TEXT("Image"), true);
+        
+        MWCS_TryAddDependency(OutDependencies, ImageBrush.GetResourceObject());
     }
 
     if (bHasAny)
@@ -929,8 +1204,11 @@ bool UMWCS_ToolEUW::ExportWidgetBlueprintHierarchyToJson(UWidgetBlueprint *Widge
 
     // Dependencies array (best-effort).
     {
+        TArray<FString> SortedDeps = DependencySet.Array();
+        SortedDeps.Sort();
+
         TArray<TSharedPtr<FJsonValue>> DepsArr;
-        for (const FString &Dep : DependencySet)
+        for (const FString &Dep : SortedDeps)
         {
             DepsArr.Add(MakeShared<FJsonValueString>(Dep));
         }

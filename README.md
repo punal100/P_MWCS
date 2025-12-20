@@ -527,6 +527,234 @@ Design for button with all states:
 Note: Dynamic content (like list items) should be added at runtime via C++/Blueprint code to the `ItemList` container.
 
 
+
+## Field Naming & Conventions
+
+### Alignment Values
+
+| Value | Meaning |
+|-------|---------|
+| `"Left"` | HAlign left edge |
+| `"Center"` | HAlign center |
+| `"Right"` | HAlign right edge |
+| `"Fill"` | HAlign to fill space |
+| `"Top"` | VAlign top edge |
+| `"Bottom"` | VAlign bottom edge |
+
+### Size Rule Values
+
+| Value | Meaning |
+|-------|---------|
+| `"Auto"` or `"Automatic"` | Automatic - size to content |
+| `"Fill"` | Fill available space |
+
+### Margin / Padding Format
+
+| Format | Example | Note |
+|--------|---------|------|
+| Explicit Object | `{"Left": 10, "Top": 5, "Right": 10, "Bottom": 5}` | Most readable |
+| Array | `[10, 5, 10, 5]` | Compact (L, T, R, B) |
+| Single Number | `10` | Uniform padding |
+
+### Write-Only Properties
+
+These properties are documentation-only in the spec but implemented logically:
+
+| Property | Widget | Implementation |
+|----------|--------|----------------|
+| `SizeToContent` | VerticalBox/HorizontalBox | Sets `Size.Rule = Auto` on all child slots |
+| `Spacing` | VerticalBox/HorizontalBox | Sets `Padding` on child slots (except first) |
+
+## Widget Types Reference
+
+Complete support matrix for all 15 widget types.
+
+### Container Widgets (3 Types)
+
+#### CanvasPanel
+- **Slot Type:** CanvasPanelSlot
+- **Properties:** None (see slot)
+- **Design Fields:** None
+- **Slot Fields:**
+  - `Anchors`: Min{X,Y}, Max{X,Y} - Default: {0,0} to {1,1}
+  - `Offsets`: Left, Top, Right, Bottom OR `Position` + `Size`
+  - `Position`: {X, Y} - Optional (alternative to Offsets)
+  - `Size`: {X, Y} - Optional (alternative to Offsets)
+  - `Alignment`: {X, Y} - 0-1, default {0.5, 0.5}
+  - `ZOrder`: integer - Default: 0
+  - `AutoSize`: boolean - Default: false
+
+#### VerticalBox
+- **Slot Type:** VerticalBoxSlot
+- **Properties:** 
+  - `SizeToContent`: boolean - INFERRED if all children Auto (write-only)
+  - `Spacing`: float - INFERRED from uniform child padding (write-only)
+- **Design Fields:** None
+- **Slot Fields:**
+  - `HAlign`: "Left"/"Center"/"Right"/"Fill"
+  - `VAlign`: "Top"/"Center"/"Bottom"/"Fill"
+  - `Padding`: {Left, Top, Right, Bottom} OR single number
+  - `Size`: {Rule: "Auto"/"Automatic"/"Fill", Value: float}
+
+#### HorizontalBox
+- **Slot Type:** HorizontalBoxSlot
+- **Properties:**
+  - `SizeToContent`: boolean - INFERRED if all children Auto (write-only)
+  - `Spacing`: float - INFERRED from uniform child padding (write-only)
+- **Design Fields:** None
+- **Slot Fields:** (Same as VerticalBox)
+
+#### Overlay
+- **Slot Type:** OverlaySlot
+- **Properties:** None
+- **Design Fields:** None
+- **Slot Fields:**
+  - `HAlign`: "Left"/"Center"/"Right"/"Fill"
+  - `VAlign`: "Top"/"Center"/"Bottom"/"Fill"
+  - `Padding`: {Left, Top, Right, Bottom} OR single number
+
+#### Border
+- **Slot Type:** BorderSlot
+- **Properties:** None
+- **Design Fields:**
+  - `BrushColor`: {R, G, B, A}
+  - `Padding`: {Left, Top, Right, Bottom}
+- **Slot Fields:**
+  - `HAlign`: "Left"/"Center"/"Right"/"Fill"
+  - `VAlign`: "Top"/"Center"/"Bottom"/"Fill"
+  - `Padding`: {Left, Top, Right, Bottom}
+
+#### ScrollBox
+- **Slot Type:** ScrollBoxSlot
+- **Properties:**
+  - `Orientation`: "Vertical"/"Horizontal" - Default: "Vertical"
+  - `ScrollBarVisibility`: "Visible"/"Collapsed"/"Hidden"/"HitTestInvisible"
+- **Design Fields:** None
+- **Slot Fields:**
+  - `HAlign`: "Left"/"Center"/"Right"/"Fill"
+  - `VAlign`: "Top"/"Center"/"Bottom"/"Fill"
+  - `Padding`: {Left, Top, Right, Bottom}
+  - `Size`: {Rule: "Auto"/"Fill", Value: float}
+
+### Leaf Widgets (12 Types)
+
+#### Button (CanvasPanel/VerticalBox/HorizontalBox parent only)
+- **Slot Type:** ButtonSlot
+- **Properties:** None
+- **Design Fields:**
+  - `NormalTint`: {R, G, B, A} (Legacy) or `Style.Normal.TintColor`
+  - `HoveredTint`: {R, G, B, A} (Legacy) or `Style.Hovered.TintColor`
+  - `PressedTint`: {R, G, B, A} (Legacy) or `Style.Pressed.TintColor`
+  - `DisabledTint`: {R, G, B, A} (Legacy) or `Style.Disabled.TintColor`
+  - `IsFocusable`: boolean
+- **Slot Fields (ButtonSlot-specific):**
+  - `HAlign`: "Left"/"Center"/"Right"/"Fill"
+  - `VAlign`: "Top"/"Center"/"Bottom"/"Fill"
+  - `Padding`: {Left, Top, Right, Bottom}
+
+#### TextBlock
+- **Slot Type:** (Inherited - depends on parent)
+- **Inline Properties:**
+  - `Text`: String
+  - `FontSize`: integer
+  - `Justification`: "Left"/"Center"/"Right"
+- **Design Fields:**
+  - `Font`: {Size, Typeface}
+  - `ColorAndOpacity`: {R, G, B, A}
+  - `Text`: String (Override)
+
+#### Image
+- **Slot Type:** (Inherited - depends on parent)
+- **Properties:** None
+- **Design Fields:**
+  - `ColorAndOpacity`: {R, G, B, A}
+  - `Size`: {X, Y} (Legacy - sets Brush.ImageSize)
+  - `Brush`: Complete FSlateBrush configuration
+    - `DrawAs`: "Image"/"Box"/"Border"/"RoundedBox"/"NoDrawType"
+    - `ImageSize`: {X, Y}
+    - `TintColor`: {R, G, B, A}
+    - `Tiling`: "NoTile"/"Horizontal"/"Vertical"/"Both"
+    - `Margin`: {Left, Top, Right, Bottom}
+
+**Example - Image with Box Brush:**
+```json
+"Design": {
+    "BackgroundOverlay": {
+        "Size": {"X": 32, "Y": 32},
+        "ColorAndOpacity": {"R": 0, "G": 0, "B": 0, "A": 0.85},
+        "Brush": {
+            "DrawAs": "Box"
+        }
+    }
+}
+```
+
+**Example - Image with Complete Brush Properties:**
+```json
+"Design": {
+    "PatternBackground": {
+        "Brush": {
+            "DrawAs": "Image",
+            "ImageSize": {"X": 128, "Y": 128},
+            "TintColor": {"R": 0.5, "G": 0.5, "B": 1, "A": 1},
+            "Tiling": "Both",
+            "Margin": {"Left": 8, "Top": 8, "Right": 8, "Bottom": 8}
+        }
+    }
+}
+```
+
+#### Spacer
+- **Slot Type:** (Inherited - depends on parent)
+- **Properties:**
+  - `Size`: {X, Y}
+- **Design Fields:** None
+
+#### MultiLineEditableTextBox
+- **Slot Type:** (Inherited)
+- **Properties:** None (Partial Support)
+
+#### Throbber
+- **Slot Type:** (Inherited)
+- **Properties:** None
+- **Design Fields:**
+  - `NumberOfPieces`: integer (default: 3, range: 1-25)
+  - `bAnimateHorizontally`: boolean (default: true)
+  - `bAnimateVertically`: boolean (default: true)
+  - `bAnimateOpacity`: boolean (default: true)
+  - `Image`: FSlateBrush (same as Image widget Brush)
+
+**Example - Custom Throbber:**
+```json
+"Design": {
+    "LoadingThrobber": {
+        "NumberOfPieces": 8,
+        "bAnimateVertically": false,
+        "Image": {
+            "ImageSize": {"X": 24, "Y": 24},
+            "TintColor": {"R": 0, "G": 0.8, "B": 1, "A": 1}
+        }
+    }
+}
+```
+
+**Example - Minimal Throbber:**
+```json
+"Design": {
+    "SimpleThrobber": {
+        "NumberOfPieces": 6
+    }
+}
+```
+
+#### ComboBoxString
+- **Slot Type:** (Inherited)
+- **Properties:** None (Partial Support)
+
+#### WidgetSwitcher
+- **Slot Type:** (Inherited)
+- **Properties:** None
+
 ## Editor UI
 
 MWCS adds a tool tab:

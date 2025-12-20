@@ -643,6 +643,49 @@ static bool ParseHierarchyNode(const TSharedPtr<FJsonObject> &NodeObj, FMWCS_Hie
         }
     }
 
+    // Parse Properties section for specialized widgets
+    const TSharedPtr<FJsonObject> *PropsPtr = nullptr;
+    const bool bHasProps = NodeObj->TryGetObjectField(TEXT("Properties"), PropsPtr) && PropsPtr && PropsPtr->IsValid();
+
+    // ScrollBox: Orientation, ScrollBarVisibility
+    if (OutNode.Type == TEXT("ScrollBox"))
+    {
+        FString OrientStr;
+        // Check Properties first, then inline
+        if ((bHasProps && (*PropsPtr)->TryGetStringField(TEXT("Orientation"), OrientStr)) || 
+            NodeObj->TryGetStringField(TEXT("Orientation"), OrientStr))
+        {
+            OutNode.bHasOrientation = true;
+            OutNode.Orientation = OrientStr.Equals(TEXT("Horizontal"), ESearchCase::IgnoreCase) ? EOrientation::Orient_Horizontal : EOrientation::Orient_Vertical;
+        }
+
+        FString VisStr;
+        if ((bHasProps && (*PropsPtr)->TryGetStringField(TEXT("ScrollBarVisibility"), VisStr)) ||
+            NodeObj->TryGetStringField(TEXT("ScrollBarVisibility"), VisStr))
+        {
+            OutNode.bHasScrollBarVisibility = true;
+            if (VisStr.Equals(TEXT("Collapsed"), ESearchCase::IgnoreCase)) OutNode.ScrollBarVisibility = ESlateVisibility::Collapsed;
+            else if (VisStr.Equals(TEXT("Hidden"), ESearchCase::IgnoreCase)) OutNode.ScrollBarVisibility = ESlateVisibility::Hidden;
+            else if (VisStr.Equals(TEXT("HitTestInvisible"), ESearchCase::IgnoreCase)) OutNode.ScrollBarVisibility = ESlateVisibility::HitTestInvisible;
+            else if (VisStr.Equals(TEXT("SelfHitTestInvisible"), ESearchCase::IgnoreCase)) OutNode.ScrollBarVisibility = ESlateVisibility::SelfHitTestInvisible;
+            else OutNode.ScrollBarVisibility = ESlateVisibility::Visible; 
+        }
+    }
+    // Spacer: Size
+    else if (OutNode.Type == TEXT("Spacer"))
+    {
+        // Check Properties.Size
+        const TSharedPtr<FJsonObject> *SizeObjPtr = nullptr;
+        if (bHasProps && (*PropsPtr)->TryGetObjectField(TEXT("Size"), SizeObjPtr) && SizeObjPtr && SizeObjPtr->IsValid())
+        {
+            double SizeX = 0.0, SizeY = 0.0;
+            (*SizeObjPtr)->TryGetNumberField(TEXT("X"), SizeX);
+            (*SizeObjPtr)->TryGetNumberField(TEXT("Y"), SizeY);
+            OutNode.bHasSpacerSize = true;
+            OutNode.SpacerSize = FVector2D(SizeX, SizeY);
+        }
+    }
+
     const TArray<TSharedPtr<FJsonValue>> *Children = nullptr;
     if (NodeObj->TryGetArrayField(TEXT("Children"), Children) && Children)
     {
@@ -656,6 +699,52 @@ static bool ParseHierarchyNode(const TSharedPtr<FJsonObject> &NodeObj, FMWCS_Hie
             if (ParseHierarchyNode(ChildVal->AsObject(), ChildNode))
             {
                 OutNode.Children.Add(MoveTemp(ChildNode));
+            }
+        }
+    }
+
+    // Apply Container Properties Macro (Spacing / SizeToContent)
+    if (OutNode.Type == TEXT("VerticalBox") || OutNode.Type == TEXT("HorizontalBox"))
+    {
+        // Reuse PropsPtr and bHasProps from earlier in the function
+        if (bHasProps)
+        {
+            // Spacing
+            double Spacing = 0.0;
+            if ((*PropsPtr)->TryGetNumberField(TEXT("Spacing"), Spacing) && Spacing > 0.0)
+            {
+                // Apply as padding to children (index > 0)
+                // VBox: Top, HBox: Left
+                bool bIsVBox = OutNode.Type == TEXT("VerticalBox");
+                
+                for (int32 i = 1; i < OutNode.Children.Num(); ++i)
+                {
+                    FMWCS_HierarchyNode &Child = OutNode.Children[i];
+                    
+                    if (!Child.bHasSlotPadding)
+                    {
+                        Child.bHasSlotPadding = true;
+                        Child.SlotPadding = FMargin(0);
+                    }
+                    
+                    if (bIsVBox)
+                        Child.SlotPadding.Top = static_cast<float>(Spacing);
+                    else
+                        Child.SlotPadding.Left = static_cast<float>(Spacing);
+                }
+            }
+            
+            // SizeToContent
+            bool bSizeToContent = false;
+            if ((*PropsPtr)->TryGetBoolField(TEXT("SizeToContent"), bSizeToContent) && bSizeToContent)
+            {
+                // Force all children to Auto size
+                for (FMWCS_HierarchyNode &Child : OutNode.Children)
+                {
+                    Child.bHasSlotSize = true;
+                    Child.SlotSizeRule = ESlateSizeRule::Automatic;
+                    Child.SlotSizeValue = 1.0f;
+                }
             }
         }
     }
