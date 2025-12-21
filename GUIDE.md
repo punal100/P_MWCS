@@ -68,3 +68,81 @@ The exporter is shaped to match the project’s `GetWidgetSpec()` conventions fo
 MWCS validation also checks this same supported parity set (plus ParentClass and required widgets).
 
 Write-only sections like `Bindings` / `Delegates` are intentionally ignored for extraction parity.
+
+## Architecture: Why Hierarchy AND Design?
+
+MWCS specs are split into **Hierarchy** (structure) and **Design** (appearance) sections. This is intentional.
+
+### Quick Summary
+
+- **Hierarchy** = WHAT widgets exist + WHERE they are (tree structure, slots, layout)
+- **Design** = HOW widgets look (colors, fonts, brushes, text content)
+
+Think: **HTML + CSS**
+- Hierarchy ≈ HTML (structure)
+- Design ≈ CSS (styling)
+
+### Why Separate?
+
+#### ✅ Clear Separation of Concerns
+
+```json
+// Hierarchy: Structure (widget tree)
+"Hierarchy": {
+    "Type": "Image",
+    "Name": "Background",
+    "Slot": {"Anchors": "fill"}
+}
+
+// Design: Appearance (styling)
+"Design": {
+    "Background": {
+        "ColorAndOpacity": {"R": 0, "G": 0, "B": 0, "A": 0.85},
+        "Brush": {"DrawAs": "Box"}
+    }
+}
+```
+
+#### ✅ Optimized Access Patterns
+
+- **Hierarchy**: Recursive tree traversal (create widgets)
+- **Design**: Name-based lookup (apply styling by widget name)
+- Each section optimized for its use case
+
+#### ✅ Cleaner Specs
+
+- Hierarchy: Scan to understand widget composition
+- Design: Jump alphabetically to find widget styling
+- Mixing them clutters the tree with visual details
+
+#### ✅ Partial Widget Support
+
+- Not all widgets need Design (e.g., `CanvasPanel`, `VerticalBox`)
+- Hierarchy defines structure; Design is opt-in for customization
+
+### Why NOT Merge?
+
+Merging would:
+- ❌ Clutter hierarchy with visual noise
+- ❌ Require navigating deep trees to update styling
+- ❌ Increase code complexity (create + style in one pass)
+- ❌ Break existing 50+ widget specs
+
+### Real-World Analogy
+
+**Current (HTML + CSS - Standard)**:
+```html
+<div><h1 class="title">Hello</h1></div>  <!-- Structure -->
+.title { color: blue; }                    <!-- Style -->
+```
+
+**Merged (Inline Styles - Anti-Pattern)**:
+```html
+<h1 style="color: blue;">Hello</h1>  <!-- Mixed! -->
+```
+
+### Conclusion
+
+The **Hierarchy/Design split is intentional and beneficial**. It follows industry patterns (HTML/CSS), optimizes for different use cases, and keeps specs clean and maintainable.
+
+**For detailed rationale, code examples, and migration cost analysis, see [README.md - Architecture section](./README.md#architecture-hierarchy-vs-design-separation).**

@@ -205,7 +205,228 @@ For children of `Overlay`:
 
 **Do NOT confuse with Slot** - Properties are widget settings, Slot is parent layout.
 
+### Architecture: Hierarchy vs Design Separation
+
+MWCS intentionally separates widget specifications into two distinct sections: **Hierarchy** and **Design**. This architectural decision follows industry-proven patterns and provides significant benefits for maintainability and clarity.
+
+#### Why Two Sections?
+
+**Hierarchy Section** defines widget **STRUCTURE**:
+- What widgets exist
+- Parent-child relationships (tree composition)
+- Widget types (`Image`, `TextBlock`, `VerticalBox`, etc.)
+- Widget names for C++ bindings
+- Slot/layout properties (Anchors, Position, Padding, Alignment)
+
+**Design Section** defines widget **APPEARANCE**:
+- Visual properties (ColorAndOpacity, Font, Size)
+- Brush configuration (DrawAs, TintColor, Tiling, Margin)
+- Text content and formatting
+- Widget-specific behavior properties
+
+**This separation mirrors the HTML + CSS pattern from web development:**
+
+```html
+<!-- HTML: Structure (analogous to Hierarchy) -->
+<div class="container">
+    <h1 class="title">Hello</h1>
+</div>
+
+<!-- CSS: Appearance (analogous to Design) -->
+.title {
+    font-size: 24px;
+    color: blue;
+}
+```
+
+#### Benefits of Current Architecture ✅
+
+**1. Clarity of Intent**
+
+Current (separated):
+```json
+"Hierarchy": {
+    "Type": "Image",
+    "Name": "Background",
+    "Slot": {"Anchors": "fill"}
+}
+"Design": {
+    "Background": {
+        "ColorAndOpacity": {"R": 0, "G": 0, "B": 0, "A": 0.85},
+        "Brush": {"DrawAs": "Box"}
+    }
+}
+```
+
+Alternative (merged - NOT recommended):
+```json
+"Hierarchy": {
+    "Type": "Image",
+    "Name": "Background",
+    "Slot": {"Anchors": "fill"},
+    "ColorAndOpacity": {...},  // Visual property mixed with structure!
+    "Brush": {...}
+}
+```
+
+**2. Spec Readability**
+
+- **Hierarchy**: Scan top-to-bottom to understand widget tree structure
+- **Design**: Scan alphabetically by widget name to find styling
+- Mixing them clutters hierarchical view with visual details
+
+**3. Different Access Patterns (Optimized)**
+
+- **Hierarchy**: Recursive tree traversal during widget creation
+- **Design**: Direct lookup by widget name `DesignMap[widgetName]`
+- Each section optimized for its specific use case
+
+**4. Partial Widget Support**
+
+- Not all widgets need Design properties (containers like `CanvasPanel`, `VerticalBox`)
+- Hierarchy defines required structure
+- Design is opt-in for visual customization
+- Empty Design section doesn't clutter Hierarchy
+
+**5. Separation of Concerns**
+
+| Aspect | Hierarchy | Design |
+|--------|-----------|--------|
+| **Concern** | Structure | Appearance |
+| **Analogy** | HTML DOM | CSS Styling |
+| **Focus** | What widgets exist | How widgets look |
+| **Typical Changes** | Add/remove widgets | Adjust colors/fonts |
+| **Lookup Pattern** | Tree traversal | Name-based dictionary |
+
+#### Why NOT Merge Them? ❌
+
+**Con 1: Cluttered Hierarchy View**
+
+Merging visual properties into the tree structure makes it harder to understand widget composition:
+
+```json
+// Current: Clean structure
+"Children": [
+    {"Type": "VBox", "Name": "ContentBox"},
+    {"Type": "TextBlock", "Name": "StatusText"}
+]
+
+// Merged: Visual noise
+"Children": [
+    {
+        "Type": "VBox",
+        "Name": "ContentBox",
+        "Padding": {...},
+        "SomeProperty": "..."
+    },
+    {
+        "Type": "TextBlock",
+        "Name": "StatusText",
+        "Font": {"Size": 24, "Typeface": "Regular"},
+        "ColorAndOpacity": {"R": 1, "G": 1, "B": 1, "A": 1},
+        "Text": "LOADING...",
+        "Justification": "Center"
+        // Can't see structure through the styling!
+    }
+]
+```
+
+**Con 2: Harder to Update Appearance**
+
+Current: Jump to Design section, find widget by name (easy alphabetical lookup)
+```json
+"Design": {
+    "BackgroundOverlay": {...},  // Easy to locate
+    "StatusText": {...}
+}
+```
+
+Merged: Must navigate tree structure to find widget (deep nesting)
+```json
+"Hierarchy": {
+    "Children": [
+        {"Children": [    // Navigate tree depth
+            {"Children": [
+                {"Name": "StatusText", "Font": ...}  // Finally!
+            ]}
+        ]}
+    ]
+}
+```
+
+**Con 3: Code Complexity Increase**
+
+Current (simple):
+```cpp
+// Create all widgets from Hierarchy
+CreateWidgetsRecursive(HierarchyObj);
+
+// Apply design to all widgets
+for (auto& [WidgetName, DesignObj] : DesignMap) {
+    ApplyDesignMeta(GetWidget(WidgetName), DesignObj);
+}
+```
+
+Merged (complex - would require):
+```cpp
+// Create widgets AND apply design during same traversal
+CreateWidgetsRecursive(HierarchyObj, bApplyDesignToo);
+// OR: Store created widgets and re-traverse
+// Both approaches more complex!
+```
+
+**Con 4: Duplicate Data Problem**
+
+Some properties could appear in BOTH sections with different purposes:
+- `"Text"` in Hierarchy (default) vs Design (designer-set value)
+- `"FontSize"` in Hierarchy (shorthand) vs Design.Font.Size (detailed config)
+
+Merging would require complex rules about which takes precedence.
+
+#### Real-World Comparison
+
+**MWCS = HTML + CSS (Industry Standard)**
+```html
+<!-- Structure: Hierarchy -->
+<div class="container">
+    <h1 class="title">Hello</h1>
+</div>
+
+<!-- Appearance: Design -->
+.title { font-size: 24px; color: blue; }
+```
+
+**Merged = Inline Styles (Anti-Pattern)**
+```html
+<!-- Everything mixed (harder to maintain) -->
+<div class="container">
+    <h1 style="font-size: 24px; color: blue;">Hello</h1>
+</div>
+```
+
+#### Migration Cost (If Merging Were Pursued)
+
+**NOT recommended**, but for reference:
+- Rewrite: MWCS_WidgetBuilder.cpp + MWCS_ToolEUW.cpp extraction/application logic
+- Update: All 50+ widget GetWidgetSpec() functions
+- Risk: Breaking all existing specs
+- Effort: ~1 week development + testing
+- **ROI**: Negative (saves ~10% JSON lines, costs 1 week + breaks everything)
+
+#### Conclusion
+
+The **Hierarchy vs Design separation is intentional and beneficial**:
+
+- ✅ Clear separation of concerns (structure vs appearance)
+- ✅ Follows industry-standard HTML/CSS pattern
+- ✅ Optimized for different access patterns
+- ✅ Easier spec readability and maintenance
+- ✅ No compelling benefit to justify merging
+
+**This architecture is designed to stay.**
+
 ### Design Section
+
 
 The `Design` section applies styling to named widgets:
 
