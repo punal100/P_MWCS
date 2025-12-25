@@ -1,6 +1,8 @@
 #include "MWCS_WidgetValidator.h"
 
 #include "MWCS_Settings.h"
+#include "MWCS_Utilities.h"
+using namespace MWCS_Utilities;
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Blueprint/WidgetBlueprintGeneratedClass.h"
@@ -24,8 +26,6 @@
 #include "Styling/SlateBrush.h"
 #include "WidgetBlueprint.h"
 #include "Blueprint/WidgetTree.h"
-
-static void AddIssue(FMWCS_Report &Report, EMWCS_IssueSeverity Severity, const FString &Code, const FString &Message, const FString &Context);
 
 static FString MWCS_NormalizeWidgetTypeForValidation(const UWidget *Widget)
 {
@@ -494,38 +494,6 @@ static void MWCS_ValidateDesignerPreview(UWidgetBlueprint *BP, const FMWCS_Widge
     (void)Report;
     (void)Context;
 #endif
-}
-
-static void AddIssue(FMWCS_Report &Report, EMWCS_IssueSeverity Severity, const FString &Code, const FString &Message, const FString &Context)
-{
-    FMWCS_Issue Issue;
-    Issue.Severity = Severity;
-    Issue.Code = Code;
-    Issue.Message = Message;
-    Issue.Context = Context;
-    Report.Issues.Add(MoveTemp(Issue));
-}
-
-static bool EnsureValidPackagePath(const FString &Path, FString &OutNormalized)
-{
-    OutNormalized = Path;
-    if (OutNormalized.IsEmpty())
-    {
-        return false;
-    }
-    if (!OutNormalized.StartsWith(TEXT("/")))
-    {
-        OutNormalized = FString::Printf(TEXT("/%s"), *OutNormalized);
-    }
-    return FPackageName::IsValidLongPackageName(OutNormalized);
-}
-
-static bool FindAssetData(const FString &PackagePath, const FString &AssetName, FAssetData &OutAssetData)
-{
-    const FString ObjectPath = FString::Printf(TEXT("%s/%s.%s"), *PackagePath, *AssetName, *AssetName);
-    FAssetRegistryModule &AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-    OutAssetData = AssetRegistry.Get().GetAssetByObjectPath(FSoftObjectPath(ObjectPath));
-    return OutAssetData.IsValid();
 }
 
 static bool CollectRequiredWidgetNames(const FMWCS_HierarchyNode &Node, TSet<FName> &OutNames)

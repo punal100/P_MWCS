@@ -47,17 +47,10 @@
 
 #include "Dom/JsonObject.h"
 
-static void ApplyDesignMeta(UWidget *Widget, const TSharedPtr<FJsonObject> &DesignObj);
+#include "MWCS_Utilities.h"
+using namespace MWCS_Utilities;
 
-static void AddIssue(FMWCS_Report &Report, EMWCS_IssueSeverity Severity, const FString &Code, const FString &Message, const FString &Context)
-{
-    FMWCS_Issue Issue;
-    Issue.Severity = Severity;
-    Issue.Code = Code;
-    Issue.Message = Message;
-    Issue.Context = Context;
-    Report.Issues.Add(MoveTemp(Issue));
-}
+static void ApplyDesignMeta(UWidget *Widget, const TSharedPtr<FJsonObject> &DesignObj);
 
 static UClass *ResolveParentClass(const FString &ParentClassPath)
 {
@@ -85,28 +78,6 @@ static void GetToolEuwContractNames(TSet<FName> &Out)
     Out.Add(TEXT("Btn_GenerateToolEUW"));
     Out.Add(TEXT("Btn_OpenSettings"));
     Out.Add(TEXT("OutputLog"));
-}
-
-static bool EnsureValidPackagePath(const FString &Path, FString &OutNormalized)
-{
-    OutNormalized = Path;
-    if (OutNormalized.IsEmpty())
-    {
-        return false;
-    }
-    if (!OutNormalized.StartsWith(TEXT("/")))
-    {
-        OutNormalized = FString::Printf(TEXT("/%s"), *OutNormalized);
-    }
-    return FPackageName::IsValidLongPackageName(OutNormalized);
-}
-
-static bool FindAssetData(const FString &PackagePath, const FString &AssetName, FAssetData &OutAssetData)
-{
-    const FString ObjectPath = FString::Printf(TEXT("%s/%s.%s"), *PackagePath, *AssetName, *AssetName);
-    FAssetRegistryModule &AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-    OutAssetData = AssetRegistry.Get().GetAssetByObjectPath(FSoftObjectPath(ObjectPath));
-    return OutAssetData.IsValid();
 }
 
 static bool DeleteAssetIfExists(const FString &PackagePath, const FString &AssetName, FMWCS_Report &Report, const FString &Context)

@@ -2,18 +2,10 @@
 
 #include "MWCS_Settings.h"
 #include "MWCS_SpecParser.h"
+#include "MWCS_Utilities.h"
+using namespace MWCS_Utilities;
 
 #include "UObject/Class.h"
-
-static void AddIssue(FMWCS_Report &Report, EMWCS_IssueSeverity Severity, const FString &Code, const FString &Message, const FString &Context)
-{
-    FMWCS_Issue Issue;
-    Issue.Severity = Severity;
-    Issue.Code = Code;
-    Issue.Message = Message;
-    Issue.Context = Context;
-    Report.Issues.Add(MoveTemp(Issue));
-}
 
 static bool CallGetWidgetSpec(UClass *ProviderClass, FString &OutJson)
 {

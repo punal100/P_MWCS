@@ -1,6 +1,8 @@
 #include "MWCS_SpecParser.h"
 
 #include "MWCS_Settings.h"
+#include "MWCS_Utilities.h"
+using namespace MWCS_Utilities;
 
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
@@ -121,8 +123,6 @@ static bool TryParseIntFieldFlexible(const TSharedPtr<FJsonObject> &Obj, const T
     return false;
 }
 
-static void AddIssue(FMWCS_Report &Report, EMWCS_IssueSeverity Severity, const FString &Code, const FString &Message, const FString &Context);
-
 static bool ParseDesignerPreview(const TSharedPtr<FJsonObject> &RootObj, FMWCS_DesignerPreview &Out, FMWCS_Report &Report, const FString &Context)
 {
     // Defaults
@@ -203,16 +203,6 @@ static bool ParseDesignerPreview(const TSharedPtr<FJsonObject> &RootObj, FMWCS_D
     }
 
     return true;
-}
-
-static void AddIssue(FMWCS_Report &Report, EMWCS_IssueSeverity Severity, const FString &Code, const FString &Message, const FString &Context)
-{
-    FMWCS_Issue Issue;
-    Issue.Severity = Severity;
-    Issue.Code = Code;
-    Issue.Message = Message;
-    Issue.Context = Context;
-    Report.Issues.Add(MoveTemp(Issue));
 }
 
 static bool ParseBindings(const TSharedPtr<FJsonObject> &RootObj, FMWCS_Bindings &OutBindings)
