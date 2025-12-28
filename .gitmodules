@@ -1,0 +1,3 @@
+[submodule "A_WCG"]
+	path = A_WCG
+	url = https://github.com/punal100/A_WCG.git

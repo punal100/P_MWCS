@@ -411,9 +411,17 @@ static void ApplyTextMeta(UTextBlock *TB, const FMWCS_HierarchyNode &Node)
         return;
     }
 
+    UE_LOG(LogTemp, Warning, TEXT("MWCS ApplyTextMeta: Widget='%s', Node.Text='%s' (Len=%d), FontSize=%d"), 
+           *TB->GetName(), *Node.Text, Node.Text.Len(), Node.FontSize);
+
     if (!Node.Text.IsEmpty())
     {
         TB->SetText(FText::FromString(Node.Text));
+        UE_LOG(LogTemp, Warning, TEXT("MWCS: Successfully set text to '%s'"), *Node.Text);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("MWCS: Node.Text is EMPTY for widget '%s'"), *TB->GetName());
     }
 
     if (Node.FontSize > 0)
@@ -1129,11 +1137,17 @@ static bool CompileAndSave(UWidgetBlueprint *Blueprint, const FMWCS_WidgetSpec &
     Args.TopLevelFlags = RF_Public | RF_Standalone;
     Args.SaveFlags = SAVE_None;
     const FString Filename = FPackageName::LongPackageNameToFilename(Package->GetName(), FPackageName::GetAssetPackageExtension());
+    
+    UE_LOG(LogTemp, Warning, TEXT("MWCS: Saving package '%s' to '%s'"), *Package->GetName(), *Filename);
+    
     if (!UPackage::SavePackage(Package, Blueprint, *Filename, Args))
     {
         AddIssue(Report, EMWCS_IssueSeverity::Error, TEXT("Builder.SaveFailed"), TEXT("Failed to save package."), Context);
+        UE_LOG(LogTemp, Error, TEXT("MWCS: SavePackage FAILED for '%s'"), *Filename);
         return false;
     }
+    
+    UE_LOG(LogTemp, Warning, TEXT("MWCS: SavePackage SUCCEEDED for '%s'"), *Filename);
     return true;
 }
 

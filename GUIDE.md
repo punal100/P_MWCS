@@ -146,3 +146,88 @@ Merging would:
 The **Hierarchy/Design split is intentional and beneficial**. It follows industry patterns (HTML/CSS), optimizes for different use cases, and keeps specs clean and maintainable.
 
 **For detailed rationale, code examples, and migration cost analysis, see [README.md - Architecture section](./README.md#architecture-hierarchy-vs-design-separation).**
+
+---
+
+## 7) A_WCG: HTML → Widget Conversion
+
+P_MWCS includes **A_WCG** (Atomic Web Component Generator) as a submodule for converting web pages to widget specs.
+
+### Quick Start
+
+```powershell
+cd Plugins/P_MWCS/A_WCG
+
+# Build the CLI tool
+.\Scripts\Build.ps1
+
+# Fetch a website
+.\Scripts\Fetch.ps1 -Url "https://example.com"
+
+# Generate preview (builds, converts, opens in browser)
+.\Scripts\RunPreview.ps1 -Name "example_com"
+```
+
+### Workflow: HTML to Widget Blueprint
+
+```
+┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  HTML/CSS File  │ ──► │   A_WCG CLI  │ ──► │  JSON + C++ Spec │
+└─────────────────┘     └──────────────┘     └─────────────────┘
+                                                      │
+                              ┌───────────────────────┘
+                              ▼
+                    ┌─────────────────┐     ┌─────────────────┐
+                    │  MWCS Commandlet │ ──► │ Widget Blueprint │
+                    └─────────────────┘     └─────────────────┘
+```
+
+### Current Support Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| HTML Structure | ✅ Full | All common elements mapped |
+| CSS Colors/Fonts | ⚠️ Partial | Basic properties work |
+| CSS Layout | ⚠️ Partial | Simple flexbox/padding |
+| JavaScript | ❌ None | Strictly ignored |
+
+### Generated Files
+
+| File | Purpose |
+|------|---------|
+| `ClassName.json` | MWCS widget specification |
+| `ClassName.h` | C++ header with UPROPERTY bindings |
+| `ClassName.cpp` | GetWidgetSpec() with embedded JSON |
+| `ClassName_preview.html` | Browser preview for comparison |
+
+### Integration Steps
+
+1. **Generate**: Run `.\Scripts\Convert.ps1 -Source file.html -ClassName MyWidget`
+2. **Copy**: Move `.h`, `.cpp`, `.json` to `Source/YourModule/UI/`
+3. **Register**: Add class to MWCS `SpecProviderClasses`
+4. **Create**: Run `MWCS_CreateWidgets -Mode=ForceRecreate`
+
+### Element Mapping Reference
+
+| HTML | UMG Widget | Notes |
+|------|-----------|-------|
+| `<div>` | VerticalBox | TextBlock if text-only |
+| `<h1>`-`<h6>` | TextBlock | With default font sizes |
+| `<p>`, `<span>` | TextBlock | |
+| `<a>`, `<button>` | Button | Transparent styling |
+| `<img>` | Image | |
+| `<ul>`, `<ol>` | VerticalBox | |
+| `<li>` | HorizontalBox | |
+| `<input>` | EditableText | |
+| `<form>` | VerticalBox | |
+
+### Tips
+
+- **JavaScript content missing?** Use browser "Save As → Webpage, Complete" to capture rendered DOM
+- **Layout broken?** Check generated JSON hierarchy matches expected structure
+- **Text invisible?** A_WCG defaults to white text - ensure dark backgrounds
+
+### Documentation
+
+- Full A_WCG docs: [`A_WCG/README.md`](./A_WCG/README.md)
+- A_WCG guide: [`A_WCG/GUIDE.md`](./A_WCG/GUIDE.md)

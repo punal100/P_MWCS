@@ -12,6 +12,91 @@ The source of truth is a C++ `static FString GetWidgetSpec()` on “spec provide
 - Editor-only module (`Type: Editor`) — not included in packaged builds
 - No Python dependency
 
+---
+
+## A_WCG Submodule (HTML → Widget Conversion)
+
+P_MWCS includes **A_WCG** (Atomic Web Component Generator) as a Git submodule at `A_WCG/`.
+
+A_WCG is a standalone C++ CLI tool that converts HTML/CSS web pages into MWCS-compatible widget specifications.
+
+### Current Status (v1.0)
+
+| Feature | Status |
+|---------|--------|
+| **HTML Structure** | ✅ Fully Supported |
+| **CSS Support** | ⚠️ Partial/Experimental (colors, fonts, basic layout) |
+| **JavaScript** | ❌ Not Supported (strictly ignored) |
+
+### What A_WCG Generates
+
+From a single HTML file, A_WCG produces:
+
+1. **JSON Spec** (`ClassName.json`) - MWCS widget specification
+2. **C++ Header** (`ClassName.h`) - UObject class with `UPROPERTY` bindings
+3. **C++ Source** (`ClassName.cpp`) - `GetWidgetSpec()` implementation with embedded JSON
+4. **Preview HTML** (`ClassName_preview.html`) - Browser preview for visual comparison
+
+### Quick Usage
+
+```powershell
+# Navigate to A_WCG
+cd Plugins/P_MWCS/A_WCG
+
+# 1. Build the tool
+.\Scripts\Build.ps1 -Configuration Release
+
+# 2. Fetch a website (downloads HTML/CSS/JS)
+.\Scripts\Fetch.ps1 -Url "https://example.com" -Name "example_com"
+
+# 3. Generate preview (builds, converts, opens preview)
+.\Scripts\RunPreview.ps1 -Name "example_com"
+
+# 4. Convert only (generates .json, .h, .cpp, _preview.html)
+.\Scripts\Convert.ps1 -Source ".\fetched\example_com.html" -ClassName "ExampleWidget"
+```
+
+### Generated Widget Hierarchy
+
+A_WCG wraps web content in a scrollable structure:
+
+```
+RootCanvas (CanvasPanel)
+└── ContentScroll (ScrollBox) ← Enables scrolling
+    └── ContentRoot (VerticalBox) ← Flow layout
+        └── [HTML Content as UMG widgets]
+```
+
+### Element Mapping
+
+| HTML Element | UMG Widget |
+|--------------|------------|
+| `<div>` | VerticalBox (or TextBlock if text-only) |
+| `<p>`, `<span>`, `<h1>`-`<h6>` | TextBlock |
+| `<a>`, `<button>` | Button |
+| `<img>` | Image |
+| `<ul>`, `<ol>` | VerticalBox |
+| `<li>` | HorizontalBox |
+| `<input>` | EditableText |
+
+### Limitations
+
+- **JavaScript content not captured** - A_WCG parses static HTML only; dynamically-rendered content requires a browser "Save As Complete" snapshot
+- **CSS mapping partial** - Complex layouts (flexbox, grid, animations) may not translate accurately
+- **Best for simple UIs** - Forms, menus, documentation pages translate well; complex web apps may require manual adjustment
+
+### Integration with MWCS
+
+After generating files:
+
+1. Copy `ClassName.h`, `ClassName.cpp`, `ClassName.json` to your project's Source folder
+2. Add the class to `SpecProviderClasses` in MWCS settings
+3. Run `MWCS_CreateWidgets` commandlet to generate the Widget Blueprint
+
+For detailed A_WCG documentation, see [`A_WCG/README.md`](./A_WCG/README.md) and [`A_WCG/GUIDE.md`](./A_WCG/GUIDE.md).
+
+---
+
 ## What MWCS does
 
 - **Discover specs** from configured spec providers
