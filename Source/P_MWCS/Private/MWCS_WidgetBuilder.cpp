@@ -38,6 +38,8 @@
 #include "Components/WidgetSwitcher.h"
 #include "Components/ScrollBox.h"
 
+#include "MWCS_TransparentButton.h"
+
 #include "Components/BorderSlot.h"
 #include "Components/ButtonSlot.h"
 #include "Components/CanvasPanelSlot.h"
@@ -176,6 +178,8 @@ static UWidget *ConstructWidget(UWidgetTree *Tree, const FMWCS_HierarchyNode &No
         WidgetClass = UBorder::StaticClass();
     else if (Type == TEXT("Button"))
         WidgetClass = UButton::StaticClass();
+    else if (Type == TEXT("TransparentButton"))
+        WidgetClass = UMWCS_TransparentButton::StaticClass();
     else if (Type == TEXT("TextBlock"))
         WidgetClass = UTextBlock::StaticClass();
     else if (Type == TEXT("Image"))
@@ -232,6 +236,8 @@ static UClass *GetWidgetClassForType(const FName Type)
         return UBorder::StaticClass();
     if (Type == TEXT("Button"))
         return UButton::StaticClass();
+    if (Type == TEXT("TransparentButton"))
+        return UMWCS_TransparentButton::StaticClass();
     if (Type == TEXT("TextBlock"))
         return UTextBlock::StaticClass();
     if (Type == TEXT("Image"))

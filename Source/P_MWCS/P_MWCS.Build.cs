@@ -14,7 +14,8 @@ public class P_MWCS : ModuleRules
                 "Engine",
                 "UMG",
                 "Json",
-                "JsonUtilities"
+                "JsonUtilities",
+                "P_MWCS_Runtime"
             }
         );
 

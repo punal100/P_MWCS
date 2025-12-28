@@ -3,7 +3,7 @@
 	"Version": 1,
 	"VersionName": "1.0",
 	"FriendlyName": "Modular Widget Creation System",
-	"Description": "Standalone editor-only system for spec-driven Widget Blueprint creation/repair/validation (no Python).",
+	"Description": "Spec-driven Widget Blueprint creation/repair/validation with custom runtime widgets.",
 	"Category": "Editor",
 	"CreatedBy": "Punal Manalan",
 	"CreatedByURL": "https://github.com/punal100/P_MWCS.git",
@@ -16,6 +16,11 @@
 		{
 			"Name": "P_MWCS",
 			"Type": "Editor",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "P_MWCS_Runtime",
+			"Type": "Runtime",
 			"LoadingPhase": "Default"
 		}
 	]

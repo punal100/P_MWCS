@@ -1,4 +1,5 @@
-#include "MWCS_WidgetValidator.h"
+
+#include "MWCS_TransparentButton.h"
 
 #include "MWCS_Settings.h"
 #include "MWCS_Utilities.h"
@@ -45,6 +46,8 @@ static FString MWCS_NormalizeWidgetTypeForValidation(const UWidget *Widget)
         return TEXT("Overlay");
     if (Widget->IsA<UBorder>())
         return TEXT("Border");
+    if (Widget->IsA<UMWCS_TransparentButton>())
+        return TEXT("TransparentButton");
     if (Widget->IsA<UButton>())
         return TEXT("Button");
     if (Widget->IsA<UTextBlock>())
