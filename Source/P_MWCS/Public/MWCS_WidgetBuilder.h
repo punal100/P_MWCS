@@ -13,4 +13,5 @@ class FMWCS_WidgetBuilder
 public:
     static bool CreateOrUpdateFromSpec(const FMWCS_WidgetSpec &Spec, EMWCS_BuildMode Mode, FMWCS_Report &InOutReport);
     static bool CreateOrUpdateToolEuwFromSpec(const FMWCS_WidgetSpec &Spec, EMWCS_BuildMode Mode, FMWCS_Report &InOutReport);
+    static bool CreateOrUpdateToolEuwFromSpecWithPath(const FMWCS_WidgetSpec &Spec, const FString &OutputPath, const FString &AssetName, EMWCS_BuildMode Mode, FMWCS_Report &InOutReport);
 };

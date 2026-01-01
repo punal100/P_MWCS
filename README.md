@@ -127,7 +127,20 @@ In **Project Settings → MWCS**, configure:
 
 - **Spec Provider Classes (Allowlist)**: list of C++ classes whose `GetWidgetSpec()` will be called
 - **OutputRootPath**: long package path for generated WBPs (example: `/Game/UI/Widgets`)
-- **Tool EUW Output Path / Name / Spec Provider Class** (optional)
+- **Tool EUW Output Path / Name / Spec Provider Class**: MWCS's own Editor Utility Widget
+- **External Tool EUWs**: Modular array for external plugins to register their own Tool EUWs (see below)
+
+### External Tool EUWs
+
+Any plugin can generate its own Editor Utility Widget through MWCS without MWCS needing to know about it. Configure in `DefaultEditor.ini`:
+
+```ini
+[/Script/P_MWCS.MWCS_Settings]
++ExternalToolEuws=(ToolName="MyPlugin",OutputPath="/Game/Editor/MyPlugin",AssetName="EUW_MyPlugin_Tool",SpecProviderClass="/Script/MyPlugin.MyToolWidgetSpec")
+```
+
+The plugin then calls: `FMWCS_Service::Get().GenerateOrRepairExternalToolEuw(TEXT("MyPlugin"))`
+
 
 Note on ordering:
 

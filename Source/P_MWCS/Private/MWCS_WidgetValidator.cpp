@@ -1,3 +1,4 @@
+#include "MWCS_WidgetValidator.h"
 
 #include "MWCS_TransparentButton.h"
 

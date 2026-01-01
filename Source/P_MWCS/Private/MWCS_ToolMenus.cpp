@@ -15,7 +15,8 @@ static void RegisterMWCSMenus()
     }
     FToolMenuOwnerScoped OwnerScoped(GMWCSMenuOwner);
     UToolMenu *Menu = UToolMenus::Get()->ExtendMenu(TEXT("LevelEditor.MainMenu.Tools"));
-    FToolMenuSection &Section = Menu->FindOrAddSection(TEXT("MWCS"));
+    FToolMenuSection &Section = Menu->FindOrAddSection(TEXT("MWCSTools"));
+    Section.Label = FText::FromString(TEXT("MWCS"));
     Section.AddMenuEntry(
         TEXT("MWCS.Open"),
         FText::FromString(TEXT("MWCS")),

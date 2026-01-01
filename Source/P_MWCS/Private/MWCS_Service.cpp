@@ -112,3 +112,87 @@ FMWCS_Report FMWCS_Service::GenerateOrRepairToolEuw()
     SaveReportJson(Report, TEXT("ToolEUW"));
     return Report;
 }
+
+FMWCS_Report FMWCS_Service::GenerateOrRepairExternalToolEuw(const FString& ToolName)
+{
+    FMWCS_Report Report;
+    const UMWCS_Settings *Settings = UMWCS_Settings::Get();
+    if (!Settings)
+    {
+        return Report;
+    }
+
+    const FMWCS_ExternalToolEuwConfig* Config = Settings->FindExternalToolEuw(ToolName);
+    if (!Config)
+    {
+        FMWCS_Issue Issue;
+        Issue.Severity = EMWCS_IssueSeverity::Error;
+        Issue.Code = TEXT("ExternalToolEUW.NotFound");
+        Issue.Message = FString::Printf(TEXT("External Tool EUW '%s' not found in ExternalToolEuws configuration."), *ToolName);
+        Issue.Context = TEXT("DefaultEditor.ini [/Script/P_MWCS.MWCS_Settings] ExternalToolEuws");
+        Report.Issues.Add(MoveTemp(Issue));
+        return Report;
+    }
+
+    if (Config->OutputPath.IsEmpty() || Config->AssetName.IsEmpty())
+    {
+        FMWCS_Issue Issue;
+        Issue.Severity = EMWCS_IssueSeverity::Error;
+        Issue.Code = TEXT("ExternalToolEUW.SettingsMissing");
+        Issue.Message = FString::Printf(TEXT("External Tool EUW '%s' has empty OutputPath or AssetName."), *ToolName);
+        Issue.Context = ToolName;
+        Report.Issues.Add(MoveTemp(Issue));
+        return Report;
+    }
+
+    UClass *ProviderClass = Config->SpecProviderClass.TryLoadClass<UObject>();
+    if (!ProviderClass)
+    {
+        FMWCS_Issue Issue;
+        Issue.Severity = EMWCS_IssueSeverity::Error;
+        Issue.Code = TEXT("ExternalToolEUW.ProviderLoadFailed");
+        Issue.Message = FString::Printf(TEXT("Failed to load spec provider class for External Tool EUW '%s'."), *ToolName);
+        Issue.Context = Config->SpecProviderClass.ToString();
+        Report.Issues.Add(MoveTemp(Issue));
+        return Report;
+    }
+
+    UFunction *Func = ProviderClass->FindFunctionByName(TEXT("GetWidgetSpec"));
+    if (!Func)
+    {
+        FMWCS_Issue Issue;
+        Issue.Severity = EMWCS_IssueSeverity::Error;
+        Issue.Code = TEXT("ExternalToolEUW.NoGetWidgetSpec");
+        Issue.Message = FString::Printf(TEXT("External Tool EUW '%s' provider missing GetWidgetSpec."), *ToolName);
+        Issue.Context = ProviderClass->GetPathName();
+        Report.Issues.Add(MoveTemp(Issue));
+        return Report;
+    }
+
+    struct FReturnValue
+    {
+        FString ReturnValue;
+    };
+    FReturnValue Params;
+    ProviderClass->GetDefaultObject()->ProcessEvent(Func, &Params);
+
+    FMWCS_WidgetSpec ToolSpec;
+    const FString ReportLabel = FString::Printf(TEXT("ExternalToolEUW_%s"), *ToolName);
+    if (!FMWCS_SpecParser::ParseSpecJson(Params.ReturnValue, ToolSpec, Report, ProviderClass->GetPathName()))
+    {
+        SaveReportJson(Report, ReportLabel);
+        return Report;
+    }
+
+    // Mark as Tool EUW so builder uses EditorUtilityWidgetBlueprint
+    ToolSpec.bIsToolEUW = true;
+
+    FMWCS_WidgetBuilder::CreateOrUpdateToolEuwFromSpecWithPath(
+        ToolSpec, 
+        Config->OutputPath, 
+        Config->AssetName, 
+        EMWCS_BuildMode::Repair, 
+        Report);
+    SaveReportJson(Report, ReportLabel);
+    return Report;
+}

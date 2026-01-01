@@ -3,7 +3,7 @@
 #include "CoreMinimal.h"
 #include "MWCS_Types.h"
 
-struct FMWCS_Issue
+struct P_MWCS_API FMWCS_Issue
 {
     EMWCS_IssueSeverity Severity = EMWCS_IssueSeverity::Info;
     FString Code;
@@ -11,7 +11,7 @@ struct FMWCS_Issue
     FString Context;
 };
 
-struct FMWCS_Report
+struct P_MWCS_API FMWCS_Report
 {
     TArray<FMWCS_Issue> Issues;
     int32 SpecsProcessed = 0;
@@ -27,5 +27,5 @@ struct FMWCS_Report
 
 namespace MWCS_ReportJson
 {
-    FString ToJsonString(const FMWCS_Report &Report);
+    P_MWCS_API FString ToJsonString(const FMWCS_Report &Report);
 }

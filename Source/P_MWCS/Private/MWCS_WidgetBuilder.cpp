@@ -1466,3 +1466,34 @@ bool FMWCS_WidgetBuilder::CreateOrUpdateToolEuwFromSpec(const FMWCS_WidgetSpec &
 
     return CreateOrUpdateInternal(PackagePath, AssetName, UEditorUtilityWidgetBlueprint::StaticClass(), Factory.Get(), Parent, Spec, Mode, InOutReport, Context);
 }
+
+bool FMWCS_WidgetBuilder::CreateOrUpdateToolEuwFromSpecWithPath(const FMWCS_WidgetSpec &Spec, const FString &OutputPath, const FString &AssetName, EMWCS_BuildMode Mode, FMWCS_Report &InOutReport)
+{
+    FString PackagePath;
+    if (!EnsureValidPackagePath(OutputPath, PackagePath))
+    {
+        AddIssue(InOutReport, EMWCS_IssueSeverity::Error, TEXT("Builder.InvalidToolEuwPath"), TEXT("OutputPath is not a valid long package path."), OutputPath);
+        return false;
+    }
+
+    const FString FinalAssetName = AssetName.IsEmpty() ? TEXT("EUW_Tool") : AssetName;
+    const FString Context = FString::Printf(TEXT("%s/%s"), *PackagePath, *FinalAssetName);
+
+    // IMPORTANT: Keep the factory alive across ForceRecreate deletion/GC.
+    TStrongObjectPtr<UEditorUtilityWidgetBlueprintFactory> Factory(NewObject<UEditorUtilityWidgetBlueprintFactory>());
+
+    UClass *Parent = nullptr;
+    if (!Spec.ParentClassPath.IsEmpty())
+    {
+        Parent = ResolveEuwParentClass(Spec.ParentClassPath);
+    }
+    if (!Parent)
+    {
+        // For EAIS and other tool EUWs, fall back to UEditorUtilityWidget
+        Parent = UEditorUtilityWidget::StaticClass();
+    }
+    Factory->ParentClass = Parent;
+
+    return CreateOrUpdateInternal(PackagePath, FinalAssetName, UEditorUtilityWidgetBlueprint::StaticClass(), Factory.Get(), Parent, Spec, Mode, InOutReport, Context);
+}
+
