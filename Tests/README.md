@@ -17,7 +17,7 @@ Automated modular testing for P_MWCS widget generation system.
 ### Run All Tests (Auto-Detect)
 
 ```powershell
-cd Plugins/P_MWCS/Tests
+cd Plugins/P_MWCS/DevTools/scripts
 .\RunMWCSTests.ps1
 ```
 
@@ -67,12 +67,17 @@ cd Plugins/P_MWCS/Tests
 ## Module Architecture
 
 ```
+DevTools/
+├── ci/                       # CI configuration
+├── output/                   # Build/test output
+└── scripts/
+    └── RunMWCSTests.ps1      # Master runner
+
 Tests/
 ├── Modules/
 │   ├── MWCS-Common.psm1      # Utilities, detection
 │   └── MWCS-Commandlets.psm1 # Commandlet wrappers
 ├── TestSpecs/                # Test JSON specs
-├── RunMWCSTests.ps1          # Master runner
 └── README.md
 ```
 
@@ -101,7 +106,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Run MWCS Tests
-        run: .\Plugins\P_MWCS\Tests\RunMWCSTests.ps1 -TestSuite All
+        run: .\Plugins\P_MWCS\DevTools\scripts\RunMWCSTests.ps1 -TestSuite All
 ```
 
 ## Troubleshooting
@@ -123,5 +128,5 @@ Enable P_MWCS in your .uproject or add plugin to Plugins directory.
 
 ---
 
-**Version:** 1.0  
-**Date:** December 21, 2025
+**Version:** 1.1  
+**Date:** January 6, 2026

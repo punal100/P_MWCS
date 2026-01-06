@@ -15,7 +15,7 @@ public:
     FMWCS_Report GenerateOrRepairToolEuw();
     
     /** Generate or repair an external Tool EUW by name (looks up config in ExternalToolEuws array) */
-    FMWCS_Report GenerateOrRepairExternalToolEuw(const FString& ToolName);
+    FMWCS_Report GenerateOrRepairExternalToolEuw(const FString& ToolName, EMWCS_BuildMode Mode = EMWCS_BuildMode::Repair);
 
     bool SaveReportJson(const FMWCS_Report &Report, const FString &FileLabel) const;
 };

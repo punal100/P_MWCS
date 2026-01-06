@@ -113,7 +113,7 @@ FMWCS_Report FMWCS_Service::GenerateOrRepairToolEuw()
     return Report;
 }
 
-FMWCS_Report FMWCS_Service::GenerateOrRepairExternalToolEuw(const FString& ToolName)
+FMWCS_Report FMWCS_Service::GenerateOrRepairExternalToolEuw(const FString& ToolName, EMWCS_BuildMode Mode)
 {
     FMWCS_Report Report;
     const UMWCS_Settings *Settings = UMWCS_Settings::Get();
@@ -191,7 +191,7 @@ FMWCS_Report FMWCS_Service::GenerateOrRepairExternalToolEuw(const FString& ToolN
         ToolSpec, 
         Config->OutputPath, 
         Config->AssetName, 
-        EMWCS_BuildMode::Repair, 
+        Mode, 
         Report);
     SaveReportJson(Report, ReportLabel);
     return Report;

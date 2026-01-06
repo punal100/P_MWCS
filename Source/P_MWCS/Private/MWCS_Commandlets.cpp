@@ -77,7 +77,18 @@ int32 UMWCS_ValidateWidgetsCommandlet::Main(const FString &Params)
 int32 UMWCS_CreateWidgetsCommandlet::Main(const FString &Params)
 {
     const EMWCS_BuildMode Mode = ParseMode(Params);
-    FMWCS_Report Report = FMWCS_Service::Get().BuildAll(Mode);
+    
+    FString ToolName;
+    FMWCS_Report Report;
+    if (FParse::Value(*Params, TEXT("-Tool="), ToolName))
+    {
+        Report = FMWCS_Service::Get().GenerateOrRepairExternalToolEuw(ToolName, Mode);
+    }
+    else
+    {
+        Report = FMWCS_Service::Get().BuildAll(Mode);
+    }
+    
     LogReportToOutput(Report);
     const bool bFailWarnings = ShouldFailOnWarnings(Params);
     const bool bFailErrors = ShouldFailOnErrors(Params);

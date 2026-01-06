@@ -417,17 +417,17 @@ static void ApplyTextMeta(UTextBlock *TB, const FMWCS_HierarchyNode &Node)
         return;
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("MWCS ApplyTextMeta: Widget='%s', Node.Text='%s' (Len=%d), FontSize=%d"), 
+    UE_LOG(LogTemp, Display, TEXT("MWCS ApplyTextMeta: Widget='%s', Node.Text='%s' (Len=%d), FontSize=%d"), 
            *TB->GetName(), *Node.Text, Node.Text.Len(), Node.FontSize);
 
     if (!Node.Text.IsEmpty())
     {
         TB->SetText(FText::FromString(Node.Text));
-        UE_LOG(LogTemp, Warning, TEXT("MWCS: Successfully set text to '%s'"), *Node.Text);
+        UE_LOG(LogTemp, Display, TEXT("MWCS: Successfully set text to '%s'"), *Node.Text);
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("MWCS: Node.Text is EMPTY for widget '%s'"), *TB->GetName());
+        UE_LOG(LogTemp, Display, TEXT("MWCS: Node.Text is EMPTY for widget '%s'"), *TB->GetName());
     }
 
     if (Node.FontSize > 0)
@@ -1144,7 +1144,7 @@ static bool CompileAndSave(UWidgetBlueprint *Blueprint, const FMWCS_WidgetSpec &
     Args.SaveFlags = SAVE_None;
     const FString Filename = FPackageName::LongPackageNameToFilename(Package->GetName(), FPackageName::GetAssetPackageExtension());
     
-    UE_LOG(LogTemp, Warning, TEXT("MWCS: Saving package '%s' to '%s'"), *Package->GetName(), *Filename);
+    UE_LOG(LogTemp, Display, TEXT("MWCS: Saving package '%s' to '%s'"), *Package->GetName(), *Filename);
     
     if (!UPackage::SavePackage(Package, Blueprint, *Filename, Args))
     {
@@ -1153,7 +1153,7 @@ static bool CompileAndSave(UWidgetBlueprint *Blueprint, const FMWCS_WidgetSpec &
         return false;
     }
     
-    UE_LOG(LogTemp, Warning, TEXT("MWCS: SavePackage SUCCEEDED for '%s'"), *Filename);
+    UE_LOG(LogTemp, Display, TEXT("MWCS: SavePackage SUCCEEDED for '%s'"), *Filename);
     return true;
 }
 
@@ -1164,7 +1164,7 @@ static void ValidateBuiltBindings(UWidgetBlueprint *Blueprint, const FMWCS_Widge
         return;
     }
 
-    auto ValidateOne = [&](const FName Name, const TCHAR *SeverityLabel)
+    auto ValidateOne = [&](const FName Name, const TCHAR *SeverityLabel, bool bIsOptional = false)
     {
         if (Name == NAME_None)
         {
@@ -1174,12 +1174,15 @@ static void ValidateBuiltBindings(UWidgetBlueprint *Blueprint, const FMWCS_Widge
         UWidget *Found = Blueprint->WidgetTree->FindWidget(Name);
         if (!Found)
         {
-            AddIssue(
-                Report,
-                EMWCS_IssueSeverity::Warning,
-                TEXT("Builder.BindingWidgetMissing"),
-                FString::Printf(TEXT("%s binding widget '%s' was not found in built WidgetTree."), SeverityLabel, *Name.ToString()),
-                Context);
+            if (!bIsOptional)
+            {
+                AddIssue(
+                    Report,
+                    EMWCS_IssueSeverity::Warning,
+                    TEXT("Builder.BindingWidgetMissing"),
+                    FString::Printf(TEXT("%s binding widget '%s' was not found in built WidgetTree."), SeverityLabel, *Name.ToString()),
+                    Context);
+            }
             return;
         }
 
@@ -1210,13 +1213,56 @@ static void ValidateBuiltBindings(UWidgetBlueprint *Blueprint, const FMWCS_Widge
         }
     };
 
+    // 1. Validate bindings explicitly defined in the Spec JSON
     for (const FName &N : Spec.Bindings.Required)
     {
-        ValidateOne(N, TEXT("Required"));
+        ValidateOne(N, TEXT("Spec.Required"));
     }
     for (const FName &N : Spec.Bindings.Optional)
     {
-        ValidateOne(N, TEXT("Optional"));
+        ValidateOne(N, TEXT("Spec.Optional"), true);
+    }
+
+    // 2. Reflective validation: check C++ parent class for [BindWidget] requirements.
+    // This addresses the user request that the MWCS log should reflect actual binding errors.
+    if (Blueprint->ParentClass)
+    {
+        for (TFieldIterator<FProperty> It(Blueprint->ParentClass); It; ++It)
+        {
+            const bool bIsRequired = It->HasMetaData(TEXT("BindWidget"));
+            const bool bIsOptional = It->HasMetaData(TEXT("BindWidgetOptional"));
+
+            if (bIsRequired || bIsOptional)
+            {
+                const FName PropName = It->GetFName();
+                UWidget* Found = Blueprint->WidgetTree->FindWidget(PropName);
+
+                if (!Found)
+                {
+                    if (bIsRequired)
+                    {
+                        AddIssue(Report, EMWCS_IssueSeverity::Warning, TEXT("Builder.CppBindWidgetMissing"),
+                            FString::Printf(TEXT("C++ required [BindWidget] '%s' missing from WidgetTree."), *PropName.ToString()), Context);
+                    }
+                }
+                else
+                {
+                    // Verify type compatibility if it's an object property
+                    if (FObjectPropertyBase* ObjProp = CastField<FObjectPropertyBase>(*It))
+                    {
+                        if (UClass* PropClass = ObjProp->PropertyClass)
+                        {
+                            if (!Found->IsA(PropClass))
+                            {
+                                AddIssue(Report, EMWCS_IssueSeverity::Warning, TEXT("Builder.CppBindWidgetTypeMismatch"),
+                                    FString::Printf(TEXT("C++ [BindWidget] '%s' type mismatch. C++ expects %s, WBP has %s."), 
+                                        *PropName.ToString(), *PropClass->GetName(), *Found->GetClass()->GetName()), Context);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1417,13 +1463,21 @@ bool FMWCS_WidgetBuilder::CreateOrUpdateFromSpec(const FMWCS_WidgetSpec &Spec, E
     // IMPORTANT: Keep the factory alive across ForceRecreate deletion/GC.
     // DeleteAssets can trigger GC, and a raw UObject* factory with no references may be collected,
     // leading to crashes inside AssetTools::CreateAsset.
-    TStrongObjectPtr<UWidgetBlueprintFactory> Factory(NewObject<UWidgetBlueprintFactory>());
-    // CreateBlueprint() may compile during asset creation. If we create directly with a parent that has
-    // required BindWidget properties, the first compile can emit warnings before MWCS has built the tree.
-    // Create with a safe base parent and reparent before our explicit compile.
-    Factory->ParentClass = UUserWidget::StaticClass();
+    if (Spec.bIsToolEUW)
+    {
+        TStrongObjectPtr<UEditorUtilityWidgetBlueprintFactory> Factory(NewObject<UEditorUtilityWidgetBlueprintFactory>());
+        return CreateOrUpdateInternal(PackagePath, AssetName, UEditorUtilityWidgetBlueprint::StaticClass(), Factory.Get(), ParentClass, Spec, Mode, InOutReport, Context);
+    }
+    else
+    {
+        TStrongObjectPtr<UWidgetBlueprintFactory> Factory(NewObject<UWidgetBlueprintFactory>());
+        // CreateBlueprint() may compile during asset creation. If we create directly with a parent that has
+        // required BindWidget properties, the first compile can emit warnings before MWCS has built the tree.
+        // Create with a safe base parent and reparent before our explicit compile.
+        Factory->ParentClass = UUserWidget::StaticClass();
 
-    return CreateOrUpdateInternal(PackagePath, AssetName, UWidgetBlueprint::StaticClass(), Factory.Get(), ParentClass, Spec, Mode, InOutReport, Context);
+        return CreateOrUpdateInternal(PackagePath, AssetName, UWidgetBlueprint::StaticClass(), Factory.Get(), ParentClass, Spec, Mode, InOutReport, Context);
+    }
 }
 
 bool FMWCS_WidgetBuilder::CreateOrUpdateToolEuwFromSpec(const FMWCS_WidgetSpec &Spec, EMWCS_BuildMode Mode, FMWCS_Report &InOutReport)
@@ -1462,7 +1516,12 @@ bool FMWCS_WidgetBuilder::CreateOrUpdateToolEuwFromSpec(const FMWCS_WidgetSpec &
         }
         Parent = UEditorUtilityWidget::StaticClass();
     }
-    Factory->ParentClass = Parent;
+    
+    // FIX: Create with safe parent first to avoid BindWidget warnings during initial compile.
+    // The factory's CreateBlueprint() can trigger an internal compile. If the parent class has
+    // BindWidget properties but the widget tree is empty, UMG will emit spurious warnings.
+    // We create with safe UEditorUtilityWidget, then reparent in CreateOrUpdateInternal.
+    Factory->ParentClass = UEditorUtilityWidget::StaticClass();
 
     return CreateOrUpdateInternal(PackagePath, AssetName, UEditorUtilityWidgetBlueprint::StaticClass(), Factory.Get(), Parent, Spec, Mode, InOutReport, Context);
 }
@@ -1492,7 +1551,12 @@ bool FMWCS_WidgetBuilder::CreateOrUpdateToolEuwFromSpecWithPath(const FMWCS_Widg
         // For EAIS and other tool EUWs, fall back to UEditorUtilityWidget
         Parent = UEditorUtilityWidget::StaticClass();
     }
-    Factory->ParentClass = Parent;
+    
+    // FIX: Create with safe parent first to avoid BindWidget warnings during initial compile.
+    // The factory's CreateBlueprint() can trigger an internal compile. If the parent class has
+    // BindWidget properties but the widget tree is empty, UMG will emit spurious warnings.
+    // We create with safe UEditorUtilityWidget, then reparent in CreateOrUpdateInternal.
+    Factory->ParentClass = UEditorUtilityWidget::StaticClass();
 
     return CreateOrUpdateInternal(PackagePath, FinalAssetName, UEditorUtilityWidgetBlueprint::StaticClass(), Factory.Get(), Parent, Spec, Mode, InOutReport, Context);
 }

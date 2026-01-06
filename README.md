@@ -44,16 +44,16 @@ From a single HTML file, A_WCG produces:
 cd Plugins/P_MWCS/A_WCG
 
 # 1. Build the tool
-.\Scripts\Build.ps1 -Configuration Release
+.\DevTools\scripts\Build.ps1 -Configuration Release
 
 # 2. Fetch a website (downloads HTML/CSS/JS)
-.\Scripts\Fetch.ps1 -Url "https://example.com" -Name "example_com"
+.\DevTools\scripts\Fetch.ps1 -Url "https://example.com" -Name "example_com"
 
 # 3. Generate preview (builds, converts, opens preview)
-.\Scripts\RunPreview.ps1 -Name "example_com"
+.\DevTools\scripts\RunPreview.ps1 -Name "example_com"
 
 # 4. Convert only (generates .json, .h, .cpp, _preview.html)
-.\Scripts\Convert.ps1 -Source ".\fetched\example_com.html" -ClassName "ExampleWidget"
+.\DevTools\scripts\Convert.ps1 -Source ".\fetched\example_com.html" -ClassName "ExampleWidget"
 ```
 
 ### Generated Widget Hierarchy

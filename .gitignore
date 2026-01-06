@@ -22,6 +22,8 @@
 /UnDiffed_output.txt
 /Diffed_output.txt
 /COMMIT_MESSAGE.txt
+/Artifacts/*
+/DevTools/output
 
 # Ignore the same things for plugins
 #/Plugins/**/Build/*
