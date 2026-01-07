@@ -37,13 +37,13 @@ function Write-TestLog {
             Write-Host "[$timestamp] $Message" -ForegroundColor Cyan
         }
         'Success' {
-            Write-Host "[$timestamp] ✓ $Message" -ForegroundColor Green
+            Write-Host "[$timestamp] [OK] $Message" -ForegroundColor Green
         }
         'Warning' {
-            Write-Host "[$timestamp] ⚠ $Message" -ForegroundColor Yellow
+            Write-Host "[$timestamp] [WARN] $Message" -ForegroundColor Yellow
         }
         'Error' {
-            Write-Host "[$timestamp] ✗ $Message" -ForegroundColor Red
+            Write-Host "[$timestamp] [ERROR] $Message" -ForegroundColor Red
         }
     }
 }

@@ -44,18 +44,19 @@ $ErrorActionPreference = 'Stop'
 # ============================================
 
 Write-Host ""
-Write-Host "╔════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║          MWCS Automated Testing Framework v1.0                 ║" -ForegroundColor Cyan
-Write-Host "║  (Modular Widget Creation System - Test Suite)                 ║" -ForegroundColor Cyan
-Write-Host "╚════════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
+Write-Host "      MWCS Automated Testing Framework v1.0                     " -ForegroundColor Cyan
+Write-Host "      (Modular Widget Creation System - Test Suite)             " -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Import modules from Modules subdirectory
 $scriptsDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$modulesDir = Join-Path $scriptsDir "Modules"
+$modulesDir = Join-Path $scriptsDir "..\..\Tests\Modules"
+$modulesDir = (Resolve-Path $modulesDir -ErrorAction SilentlyContinue).Path
 
-if (!(Test-Path $modulesDir)) {
-    Write-Host "✗ ERROR: Modules directory not found at: $modulesDir" -ForegroundColor Red
+if (-not $modulesDir -or !(Test-Path $modulesDir)) {
+    Write-Host "ERROR: Modules directory not found at: $modulesDir" -ForegroundColor Red
     exit 1
 }
 
@@ -63,10 +64,10 @@ Write-Host "Importing modules..." -ForegroundColor Gray
 try {
     Import-Module (Join-Path $modulesDir "MWCS-Common.psm1") -Force -ErrorAction Stop
     Import-Module (Join-Path $modulesDir "MWCS-Commandlets.psm1") -Force -ErrorAction Stop
-    Write-Host "✓ Modules imported successfully" -ForegroundColor Green
+    Write-Host "OK Modules imported successfully" -ForegroundColor Green
 }
 catch {
-    Write-Host "✗ Failed to import modules: $_" -ForegroundColor Red
+    Write-Host "ERROR Failed to import modules: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
 
@@ -116,6 +117,7 @@ if (!(Test-MWCSPluginEnabled $ProjectFile)) {
 }
 
 Write-TestLog "P_MWCS plugin verified" -Level Success
+
 Write-Host ""
 
 # ============================================
@@ -127,11 +129,11 @@ $testResults = @()
 
 # Test 1: Creation
 if ($TestSuite -eq 'All' -or $TestSuite -eq 'Creation') {
-    Write-TestLog "════════════════════════════════════════════════════════════════" -Level Info
+    Write-TestLog "----------------------------------------------------------------" -Level Info
     Write-TestLog "Running Widget Creation Tests..." -Level Info
-    Write-TestLog "════════════════════════════════════════════════════════════════" -Level Info
+    Write-TestLog "----------------------------------------------------------------" -Level Info
     
-    $createResult = Invoke-MWCSCreateWidgets -ProjectFile $ProjectFile -UEPath $UEPath -Mode Preserve
+    $createResult = Invoke-MWCSCreateWidgets -ProjectFile $ProjectFile -UEPath $UEPath -Mode ForceRecreate
     if ($createResult -eq 0) {
         Write-TestLog "Creation Tests PASSED" -Level Success
         $testResults += "Creation: PASS"
@@ -146,17 +148,27 @@ if ($TestSuite -eq 'All' -or $TestSuite -eq 'Creation') {
 
 # Test 2: Extraction
 if ($TestSuite -eq 'All' -or $TestSuite -eq 'Extraction') {
-    Write-TestLog "════════════════════════════════════════════════════════════════" -Level Info
+    Write-TestLog "----------------------------------------------------------------" -Level Info
     Write-TestLog "Running Widget Extraction Tests..." -Level Info
-    Write-TestLog "════════════════════════════════════════════════════════════════" -Level Info
-    
-    $extractResult = Invoke-MWCSExtractWidgets -ProjectFile $ProjectFile -UEPath $UEPath
-    if ($extractResult -eq 0) {
-        Write-TestLog "Extraction Tests PASSED" -Level Success
-        $testResults += "Extraction: PASS"
+    Write-TestLog "----------------------------------------------------------------" -Level Info
+
+    # There is no MWCS_ExtractWidgets commandlet in this repo. Use the extraction parity script instead.
+    $parityScript = Join-Path $scriptsDir "RunExtractionParityTest.ps1"
+    if (Test-Path $parityScript) {
+        Write-TestLog "Executing extraction parity test script..." -Level Info
+        & $parityScript -ProjectPath $ProjectFile -UEPath $UEPath
+        if ($LASTEXITCODE -eq 0) {
+            Write-TestLog "Extraction Tests PASSED" -Level Success
+            $testResults += "Extraction: PASS"
+        }
+        else {
+            Write-TestLog "Extraction Tests FAILED" -Level Error
+            $testResults += "Extraction: FAIL"
+            $allPassed = $false
+        }
     }
     else {
-        Write-TestLog "Extraction Tests SKIPPED (commandlet may not exist)" -Level Warning
+        Write-TestLog "Extraction Tests SKIPPED (RunExtractionParityTest.ps1 not found)" -Level Warning
         $testResults += "Extraction: SKIP"
     }
     Write-Host ""
@@ -164,12 +176,12 @@ if ($TestSuite -eq 'All' -or $TestSuite -eq 'Extraction') {
 
 # Test 3: Round-Trip
 if ($TestSuite -eq 'All' -or $TestSuite -eq 'RoundTrip') {
-    Write-TestLog "════════════════════════════════════════════════════════════════" -Level Info
+    Write-TestLog "----------------------------------------------------------------" -Level Info
     Write-TestLog "Running Round-Trip Tests..." -Level Info
-    Write-TestLog "════════════════════════════════════════════════════════════════" -Level Info
+    Write-TestLog "----------------------------------------------------------------" -Level Info
     
     # Round-trip: Create -> Validate
-    $rtCreateResult = Invoke-MWCSCreateWidgets -ProjectFile $ProjectFile -UEPath $UEPath -Mode Preserve
+    $rtCreateResult = Invoke-MWCSCreateWidgets -ProjectFile $ProjectFile -UEPath $UEPath -Mode ForceRecreate
     if ($rtCreateResult -eq 0) {
         $rtValidateResult = Invoke-MWCSValidateWidgets -ProjectFile $ProjectFile -UEPath $UEPath
         if ($rtValidateResult -eq 0) {
@@ -194,9 +206,9 @@ if ($TestSuite -eq 'All' -or $TestSuite -eq 'RoundTrip') {
 # SUMMARY & EXIT
 # ============================================
 
-Write-TestLog "════════════════════════════════════════════════════════════════" -Level Info
+Write-TestLog "================================================================" -Level Info
 Write-TestLog "TEST SUMMARY" -Level Info
-Write-TestLog "════════════════════════════════════════════════════════════════" -Level Info
+Write-TestLog "================================================================" -Level Info
 
 foreach ($result in $testResults) {
     if ($result -like "*PASS*") {
@@ -210,15 +222,15 @@ foreach ($result in $testResults) {
     }
 }
 
-Write-TestLog "════════════════════════════════════════════════════════════════" -Level Info
+Write-TestLog "================================================================" -Level Info
 
 if ($allPassed) {
-    Write-TestLog "✓✓✓ ALL TESTS PASSED ✓✓✓" -Level Success
+    Write-TestLog "ALL TESTS PASSED" -Level Success
     Write-Host ""
     exit 0
 }
 else {
-    Write-TestLog "✗✗✗ SOME TESTS FAILED ✗✗✗" -Level Error
+    Write-TestLog "SOME TESTS FAILED" -Level Error
     Write-Host ""
     exit 1
 }

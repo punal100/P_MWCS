@@ -37,8 +37,8 @@ function Invoke-MWCSCreateWidgets {
         [Parameter(Mandatory = $true)]
         [string]$UEPath,
         
-        [ValidateSet('Preserve', 'Overwrite')]
-        [string]$Mode = 'Preserve'
+        [ValidateSet('CreateMissing', 'Repair', 'ForceRecreate')]
+        [string]$Mode = 'CreateMissing'
     )
     
     $editorCmdExe = Join-Path $UEPath "Engine\Binaries\Win64\UnrealEditor-Cmd.exe"

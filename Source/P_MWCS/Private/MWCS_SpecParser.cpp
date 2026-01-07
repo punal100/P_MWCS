@@ -300,7 +300,7 @@ static bool ParseHierarchyNode(const TSharedPtr<FJsonObject> &NodeObj, FMWCS_Hie
 
     // IMPORTANT:
     // If IsVariable is omitted in JSON, preserve the struct default (true).
-    // Many specs (e.g. P_MiniFootball) rely on the default so BindWidget validation works.
+    // Many specs rely on the default so BindWidget validation works.
     bool bIsVariable = false;
     if (NodeObj->TryGetBoolField(TEXT("IsVariable"), bIsVariable))
     {
@@ -552,7 +552,7 @@ static bool ParseHierarchyNode(const TSharedPtr<FJsonObject> &NodeObj, FMWCS_Hie
         else
         {
             // Legacy/alternate CanvasPanel slot schema: allow canvas properties at Slot root.
-            // Common in P_MiniFootball specs: Anchors/Position/Size/Alignment/Offsets/AutoSize/ZOrder.
+            // Common in specs: Anchors/Position/Size/Alignment/Offsets/AutoSize/ZOrder.
 
             // Anchors: { Min:{X,Y}, Max:{X,Y} }
             const TSharedPtr<FJsonObject> *AnchorsObjPtr = nullptr;
@@ -642,7 +642,7 @@ static bool ParseHierarchyNode(const TSharedPtr<FJsonObject> &NodeObj, FMWCS_Hie
     {
         FString OrientStr;
         // Check Properties first, then inline
-        if ((bHasProps && (*PropsPtr)->TryGetStringField(TEXT("Orientation"), OrientStr)) || 
+        if ((bHasProps && (*PropsPtr)->TryGetStringField(TEXT("Orientation"), OrientStr)) ||
             NodeObj->TryGetStringField(TEXT("Orientation"), OrientStr))
         {
             OutNode.bHasOrientation = true;
@@ -654,11 +654,16 @@ static bool ParseHierarchyNode(const TSharedPtr<FJsonObject> &NodeObj, FMWCS_Hie
             NodeObj->TryGetStringField(TEXT("ScrollBarVisibility"), VisStr))
         {
             OutNode.bHasScrollBarVisibility = true;
-            if (VisStr.Equals(TEXT("Collapsed"), ESearchCase::IgnoreCase)) OutNode.ScrollBarVisibility = ESlateVisibility::Collapsed;
-            else if (VisStr.Equals(TEXT("Hidden"), ESearchCase::IgnoreCase)) OutNode.ScrollBarVisibility = ESlateVisibility::Hidden;
-            else if (VisStr.Equals(TEXT("HitTestInvisible"), ESearchCase::IgnoreCase)) OutNode.ScrollBarVisibility = ESlateVisibility::HitTestInvisible;
-            else if (VisStr.Equals(TEXT("SelfHitTestInvisible"), ESearchCase::IgnoreCase)) OutNode.ScrollBarVisibility = ESlateVisibility::SelfHitTestInvisible;
-            else OutNode.ScrollBarVisibility = ESlateVisibility::Visible; 
+            if (VisStr.Equals(TEXT("Collapsed"), ESearchCase::IgnoreCase))
+                OutNode.ScrollBarVisibility = ESlateVisibility::Collapsed;
+            else if (VisStr.Equals(TEXT("Hidden"), ESearchCase::IgnoreCase))
+                OutNode.ScrollBarVisibility = ESlateVisibility::Hidden;
+            else if (VisStr.Equals(TEXT("HitTestInvisible"), ESearchCase::IgnoreCase))
+                OutNode.ScrollBarVisibility = ESlateVisibility::HitTestInvisible;
+            else if (VisStr.Equals(TEXT("SelfHitTestInvisible"), ESearchCase::IgnoreCase))
+                OutNode.ScrollBarVisibility = ESlateVisibility::SelfHitTestInvisible;
+            else
+                OutNode.ScrollBarVisibility = ESlateVisibility::Visible;
         }
     }
     // Spacer: Size
@@ -706,24 +711,24 @@ static bool ParseHierarchyNode(const TSharedPtr<FJsonObject> &NodeObj, FMWCS_Hie
                 // Apply as padding to children (index > 0)
                 // VBox: Top, HBox: Left
                 bool bIsVBox = OutNode.Type == TEXT("VerticalBox");
-                
+
                 for (int32 i = 1; i < OutNode.Children.Num(); ++i)
                 {
                     FMWCS_HierarchyNode &Child = OutNode.Children[i];
-                    
+
                     if (!Child.bHasSlotPadding)
                     {
                         Child.bHasSlotPadding = true;
                         Child.SlotPadding = FMargin(0);
                     }
-                    
+
                     if (bIsVBox)
                         Child.SlotPadding.Top = static_cast<float>(Spacing);
                     else
                         Child.SlotPadding.Left = static_cast<float>(Spacing);
                 }
             }
-            
+
             // SizeToContent
             bool bSizeToContent = false;
             if ((*PropsPtr)->TryGetBoolField(TEXT("SizeToContent"), bSizeToContent) && bSizeToContent)
