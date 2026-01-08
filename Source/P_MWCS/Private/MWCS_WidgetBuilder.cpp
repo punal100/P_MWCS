@@ -454,6 +454,32 @@ static void ApplyTextMeta(UTextBlock *TB, const FMWCS_HierarchyNode &Node)
     }
 }
 
+static void ApplyBorderMeta(UBorder *Border, const FMWCS_HierarchyNode &Node)
+{
+    if (!Border)
+    {
+        return;
+    }
+    
+    // Apply BrushColor from hierarchy node if specified
+    if (Node.bHasBrushColor)
+    {
+        Border->SetBrushColor(Node.BrushColor);
+        UE_LOG(LogTemp, Display, TEXT("MWCS ApplyBorderMeta: Applied BrushColor R=%.3f G=%.3f B=%.3f A=%.3f to '%s'"),
+            Node.BrushColor.R, Node.BrushColor.G, Node.BrushColor.B, Node.BrushColor.A,
+            *Border->GetName());
+    }
+    
+    // Apply Padding from hierarchy node if specified
+    if (Node.bHasContentPadding)
+    {
+        Border->SetPadding(Node.ContentPadding);
+        UE_LOG(LogTemp, Display, TEXT("MWCS ApplyBorderMeta: Applied Padding L=%.1f T=%.1f R=%.1f B=%.1f to '%s'"),
+            Node.ContentPadding.Left, Node.ContentPadding.Top, Node.ContentPadding.Right, Node.ContentPadding.Bottom,
+            *Border->GetName());
+    }
+}
+
 static bool BuildNode(
     UWidgetTree *Tree,
     const FMWCS_HierarchyNode &Node,
@@ -658,6 +684,13 @@ static bool BuildNode(
         if (UTextBlock *TB = Cast<UTextBlock>(Current))
         {
             ApplyTextMeta(TB, Node);
+        }
+    }
+    else if (Node.Type == TEXT("Border"))
+    {
+        if (UBorder *Border = Cast<UBorder>(Current))
+        {
+            ApplyBorderMeta(Border, Node);
         }
     }
 

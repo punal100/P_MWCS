@@ -105,6 +105,7 @@ For detailed A_WCG documentation, see [`A_WCG/README.md`](./A_WCG/README.md) and
 - **Repair**: deterministically rebuilds the widget tree for existing assets
 - **ForceRecreate**: deterministic “rebuild everything” mode (implemented as an in-place rebuild to avoid deletion-time engine warnings in strict CI)
 - **Generate/Repair Tool EUW**: creates an Editor Utility Widget from a dedicated tool spec provider
+- **Automatic Post-Generation Validation**: validates generated widgets against their specs immediately after creation
 - **CI/headless support** via commandlets with non-zero exits on errors/warnings
 
 All build modes:
@@ -112,6 +113,31 @@ All build modes:
 - Rebuild the `WidgetTree`
 - Compile
 - Save the package
+- **Run post-generation validation** (automatic)
+
+### Automatic Validation (v1.1+)
+
+MWCS now automatically validates all generated widgets immediately after building. This includes:
+
+- **Hierarchy validation**: Widget types, names, and structure match the spec
+- **Hierarchy property validation**: Properties specified in hierarchy nodes (Border.BrushColor, Border.Padding, TextBlock.Text, TextBlock.FontSize)
+- **Design section validation**: Properties specified in the Design section
+
+Validation runs automatically for:
+- All normal widgets after `FMWCS_Service::BuildAll()` completes
+- Each Tool EUW after `GenerateOrRepairToolEuw()` or `GenerateOrRepairExternalToolEuw()` completes
+
+Example log output:
+```
+MWCS: Building 3 widget(s)...
+MWCS: Running automatic post-generation validation...
+MWCS: [PASS] WBP_GameHUD
+MWCS: [PASS] WBP_PauseMenu
+MWCS: [FAIL] WBP_Settings - 1 issue(s)
+       - [Validator.Hierarchy.Border.BrushColorMismatch] BrushColor mismatch...
+MWCS: Post-generation validation complete. Pass: 2, Fail: 1
+```
+
 
 ## Install / Enable
 
@@ -554,6 +580,8 @@ The `Design` section applies styling to named widgets:
 **Button properties:** `Style` (Normal/Hovered/Pressed), `IsFocusable`  
 **Border properties:** `BrushColor`, `Padding`, `Background`  
 **Image properties:** `ColorAndOpacity`, `Brush`
+
+> **Note (v1.1+):** Border widgets also support `BrushColor` and `Padding` directly in the **Hierarchy** section (similar to TextBlock's `Text` and `FontSize`). The Design section values will override Hierarchy values if both are specified.
 
 ### Dependencies Section
 

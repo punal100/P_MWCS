@@ -71,6 +71,13 @@ struct FMWCS_HierarchyNode
     bool bHasSpacerSize = false;
     FVector2D SpacerSize = FVector2D::ZeroVector;
 
+    // Border-specific fields (for convenience like TextBlock has Text/FontSize)
+    bool bHasBrushColor = false;
+    FLinearColor BrushColor = FLinearColor::White;
+    
+    bool bHasContentPadding = false;
+    FMargin ContentPadding = FMargin(0);
+
     TArray<FMWCS_HierarchyNode> Children;
 };
 

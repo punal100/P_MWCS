@@ -3,6 +3,7 @@
 #include "MWCS_Service.h"
 
 #include "Framework/Docking/TabManager.h"
+#include "Styling/AppStyle.h"
 #include "ToolMenus.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Input/SButton.h"
@@ -11,6 +12,8 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Input/SMultiLineEditableTextBox.h"
 #include "Widgets/Text/STextBlock.h"
+
+#define LOCTEXT_NAMESPACE "FMWCS_ToolTab"
 
 const FName FMWCS_ToolTab::TabName(TEXT("MWCS.ToolTab"));
 
@@ -23,7 +26,7 @@ public:
     void Construct(const FArguments &InArgs)
     {
         ChildSlot
-            [SNew(SVerticalBox) + SVerticalBox::Slot().AutoHeight().Padding(8)[SNew(STextBlock).Text(FText::FromString(TEXT("MWCS — Modular Widget Creation System")))] + SVerticalBox::Slot().AutoHeight().Padding(8)[SNew(SHorizontalBox) + SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("Validate"))).OnClicked(this, &SMWCS_ToolPanel::OnValidate)] + SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("Create Missing"))).OnClicked(this, &SMWCS_ToolPanel::OnCreateMissing)] + SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("Repair"))).OnClicked(this, &SMWCS_ToolPanel::OnRepair)] + SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("Force Recreate"))).OnClicked(this, &SMWCS_ToolPanel::OnForceRecreate)] + SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("Generate/Repair Tool EUW"))).OnClicked(this, &SMWCS_ToolPanel::OnGenerateToolEuw)]] + SVerticalBox::Slot().AutoHeight().Padding(8)[SNew(SSeparator)] + SVerticalBox::Slot().FillHeight(1.0f).Padding(8)[SAssignNew(LogBox, SMultiLineEditableTextBox).IsReadOnly(true).Text(FText::FromString(TEXT("")))]];
+            [SNew(SVerticalBox) + SVerticalBox::Slot().AutoHeight().Padding(8)[SNew(STextBlock).Text(LOCTEXT("MWCSHeader", "MWCS Widget Creation System"))] + SVerticalBox::Slot().AutoHeight().Padding(8)[SNew(SHorizontalBox) + SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("Validate"))).OnClicked(this, &SMWCS_ToolPanel::OnValidate)] + SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("Create Missing"))).OnClicked(this, &SMWCS_ToolPanel::OnCreateMissing)] + SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("Repair"))).OnClicked(this, &SMWCS_ToolPanel::OnRepair)] + SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("Force Recreate"))).OnClicked(this, &SMWCS_ToolPanel::OnForceRecreate)] + SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("Generate/Repair Tool EUW"))).OnClicked(this, &SMWCS_ToolPanel::OnGenerateToolEuw)]] + SVerticalBox::Slot().AutoHeight().Padding(8)[SNew(SSeparator)] + SVerticalBox::Slot().FillHeight(1.0f).Padding(8)[SAssignNew(LogBox, SMultiLineEditableTextBox).IsReadOnly(true).Text(FText::FromString(TEXT("")))]];
     }
 
 private:
@@ -100,7 +103,7 @@ static TSharedRef<SDockTab> SpawnMWCSTab(const FSpawnTabArgs &Args)
 
 void FMWCS_ToolTab::Register()
 {
-    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TabName, FOnSpawnTab::CreateStatic(&SpawnMWCSTab)).SetDisplayName(FText::FromString(TEXT("MWCS"))).SetMenuType(ETabSpawnerMenuType::Hidden);
+    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TabName, FOnSpawnTab::CreateStatic(&SpawnMWCSTab)).SetDisplayName(LOCTEXT("MWCSTabTitle", "MWCS Widget Creation System")).SetTooltipText(LOCTEXT("MWCSTabTooltip", "Open MWCS Widget Creation System")).SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "WidgetDesigner.LayoutTransform")).SetMenuType(ETabSpawnerMenuType::Hidden);
 }
 
 void FMWCS_ToolTab::Unregister()
@@ -112,3 +115,5 @@ void FMWCS_ToolTab::Open()
 {
     FGlobalTabmanager::Get()->TryInvokeTab(TabName);
 }
+
+#undef LOCTEXT_NAMESPACE

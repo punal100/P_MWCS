@@ -53,10 +53,21 @@ FMWCS_Report FMWCS_Service::BuildAll(EMWCS_BuildMode Mode)
     FMWCS_Report Report;
     TArray<FMWCS_WidgetSpec> Specs;
     FMWCS_WidgetRegistry::CollectSpecs(Specs, Report);
+    
+    UE_LOG(LogTemp, Display, TEXT("MWCS: Building %d widget(s)..."), Specs.Num());
+    
     for (const FMWCS_WidgetSpec &Spec : Specs)
     {
         FMWCS_WidgetBuilder::CreateOrUpdateFromSpec(Spec, Mode, Report);
     }
+    
+    // NEW: Automatic post-generation validation for all normal widgets
+    if (!Report.HasErrors() && Specs.Num() > 0)
+    {
+        UE_LOG(LogTemp, Display, TEXT("MWCS: Running automatic post-generation validation..."));
+        FMWCS_WidgetValidator::ValidatePostGeneration(Specs, Report, true);
+    }
+    
     SaveReportJson(Report, TEXT("Build"));
     return Report;
 }
@@ -109,6 +120,17 @@ FMWCS_Report FMWCS_Service::GenerateOrRepairToolEuw()
     }
 
     FMWCS_WidgetBuilder::CreateOrUpdateToolEuwFromSpec(ToolSpec, EMWCS_BuildMode::Repair, Report);
+    
+    // NEW: Automatic post-generation validation for internal Tool EUW
+    if (!Report.HasErrors())
+    {
+        FMWCS_WidgetValidator::ValidateToolEuwPostGeneration(
+            ToolSpec, 
+            Report, 
+            Settings->ToolEuwOutputPath, 
+            Settings->ToolEuwAssetName);
+    }
+    
     SaveReportJson(Report, TEXT("ToolEUW"));
     return Report;
 }
@@ -193,6 +215,17 @@ FMWCS_Report FMWCS_Service::GenerateOrRepairExternalToolEuw(const FString& ToolN
         Config->AssetName, 
         Mode, 
         Report);
+    
+    // NEW: Automatic post-generation validation for Tool EUW
+    if (!Report.HasErrors())
+    {
+        FMWCS_WidgetValidator::ValidateToolEuwPostGeneration(
+            ToolSpec, 
+            Report, 
+            Config->OutputPath, 
+            Config->AssetName);
+    }
+    
     SaveReportJson(Report, ReportLabel);
     return Report;
 }

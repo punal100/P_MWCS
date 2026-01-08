@@ -680,7 +680,47 @@ static bool ParseHierarchyNode(const TSharedPtr<FJsonObject> &NodeObj, FMWCS_Hie
             OutNode.SpacerSize = FVector2D(SizeX, SizeY);
         }
     }
-
+    // Border-specific fields: BrushColor, Padding (convenience parsing like TextBlock.Text)
+    else if (OutNode.Type == TEXT("Border"))
+    {
+        // BrushColor - can be specified directly in hierarchy node
+        const TSharedPtr<FJsonObject> *BrushColorObjPtr = nullptr;
+        if (NodeObj->TryGetObjectField(TEXT("BrushColor"), BrushColorObjPtr) && BrushColorObjPtr && BrushColorObjPtr->IsValid())
+        {
+            double R = 1, G = 1, B = 1, A = 1;
+            (*BrushColorObjPtr)->TryGetNumberField(TEXT("R"), R);
+            (*BrushColorObjPtr)->TryGetNumberField(TEXT("G"), G);
+            (*BrushColorObjPtr)->TryGetNumberField(TEXT("B"), B);
+            (*BrushColorObjPtr)->TryGetNumberField(TEXT("A"), A);
+            
+            OutNode.bHasBrushColor = true;
+            OutNode.BrushColor = FLinearColor(
+                static_cast<float>(R),
+                static_cast<float>(G),
+                static_cast<float>(B),
+                static_cast<float>(A)
+            );
+        }
+        
+        // Padding (Border content padding, not slot padding)
+        const TSharedPtr<FJsonObject> *ContentPaddingObjPtr = nullptr;
+        if (NodeObj->TryGetObjectField(TEXT("Padding"), ContentPaddingObjPtr) && ContentPaddingObjPtr && ContentPaddingObjPtr->IsValid())
+        {
+            double L = 0, T = 0, R = 0, B = 0;
+            (*ContentPaddingObjPtr)->TryGetNumberField(TEXT("Left"), L);
+            (*ContentPaddingObjPtr)->TryGetNumberField(TEXT("Top"), T);
+            (*ContentPaddingObjPtr)->TryGetNumberField(TEXT("Right"), R);
+            (*ContentPaddingObjPtr)->TryGetNumberField(TEXT("Bottom"), B);
+            
+            OutNode.bHasContentPadding = true;
+            OutNode.ContentPadding = FMargin(
+                static_cast<float>(L),
+                static_cast<float>(T),
+                static_cast<float>(R),
+                static_cast<float>(B)
+            );
+        }
+    }
     const TArray<TSharedPtr<FJsonValue>> *Children = nullptr;
     if (NodeObj->TryGetArrayField(TEXT("Children"), Children) && Children)
     {

@@ -644,6 +644,266 @@ bool FMWCS_WidgetValidator::ValidateSpecAsset(const FMWCS_WidgetSpec &Spec, FMWC
     {
         AddIssue(InOutReport, EMWCS_IssueSeverity::Warning, TEXT("Validator.NoGeneratedClass"), TEXT("Blueprint has no GeneratedClass (compile may be required)."), Context);
     }
+    
+    // NEW: Validate hierarchy-level properties (e.g., Border.BrushColor, Border.Padding)
+    ValidateHierarchyProperties(Spec, BP, InOutReport, Context);
 
     return !InOutReport.HasErrors();
+}
+
+// ============================================================================
+// HIERARCHY PROPERTY VALIDATION
+// ============================================================================
+
+static void MWCS_ValidateHierarchyNodeProperties(
+    const FMWCS_HierarchyNode &Node,
+    UWidget *Widget,
+    FMWCS_Report &Report,
+    const FString &Context)
+{
+    if (!Widget)
+    {
+        return;
+    }
+    
+    const FString NodeCtx = Node.Name != NAME_None
+        ? FString::Printf(TEXT("%s::%s"), *Context, *Node.Name.ToString())
+        : Context;
+    
+    // Border-specific hierarchy property validation
+    if (UBorder *Border = Cast<UBorder>(Widget))
+    {
+        if (Node.bHasBrushColor)
+        {
+            const FLinearColor Actual = Border->GetBrushColor();
+            if (!MWCS_NearlyEqualColor(Actual, Node.BrushColor))
+            {
+                AddIssue(Report, EMWCS_IssueSeverity::Error, TEXT("Validator.Hierarchy.Border.BrushColorMismatch"),
+                    FString::Printf(TEXT("BrushColor mismatch. Expected R=%.3f G=%.3f B=%.3f A=%.3f, Actual R=%.3f G=%.3f B=%.3f A=%.3f"),
+                        Node.BrushColor.R, Node.BrushColor.G, Node.BrushColor.B, Node.BrushColor.A,
+                        Actual.R, Actual.G, Actual.B, Actual.A),
+                    NodeCtx);
+            }
+        }
+        
+        if (Node.bHasContentPadding)
+        {
+            const FMargin Actual = Border->GetPadding();
+            if (!MWCS_NearlyEqual(Actual.Left, Node.ContentPadding.Left) ||
+                !MWCS_NearlyEqual(Actual.Top, Node.ContentPadding.Top) ||
+                !MWCS_NearlyEqual(Actual.Right, Node.ContentPadding.Right) ||
+                !MWCS_NearlyEqual(Actual.Bottom, Node.ContentPadding.Bottom))
+            {
+                AddIssue(Report, EMWCS_IssueSeverity::Error, TEXT("Validator.Hierarchy.Border.PaddingMismatch"),
+                    FString::Printf(TEXT("Padding mismatch. Expected L=%.1f T=%.1f R=%.1f B=%.1f, Actual L=%.1f T=%.1f R=%.1f B=%.1f"),
+                        Node.ContentPadding.Left, Node.ContentPadding.Top, Node.ContentPadding.Right, Node.ContentPadding.Bottom,
+                        Actual.Left, Actual.Top, Actual.Right, Actual.Bottom),
+                    NodeCtx);
+            }
+        }
+    }
+    
+    // TextBlock-specific hierarchy property validation
+    if (UTextBlock *TB = Cast<UTextBlock>(Widget))
+    {
+        if (!Node.Text.IsEmpty())
+        {
+            const FString ActualText = TB->GetText().ToString();
+            if (!ActualText.Equals(Node.Text))
+            {
+                AddIssue(Report, EMWCS_IssueSeverity::Error, TEXT("Validator.Hierarchy.TextBlock.TextMismatch"),
+                    FString::Printf(TEXT("Text mismatch. Expected '%s', Actual '%s'"),
+                        *Node.Text, *ActualText),
+                    NodeCtx);
+            }
+        }
+        
+        if (Node.FontSize > 0)
+        {
+            const int32 ActualSize = TB->GetFont().Size;
+            if (ActualSize != Node.FontSize)
+            {
+                AddIssue(Report, EMWCS_IssueSeverity::Error, TEXT("Validator.Hierarchy.TextBlock.FontSizeMismatch"),
+                    FString::Printf(TEXT("FontSize mismatch. Expected %d, Actual %d"),
+                        Node.FontSize, ActualSize),
+                    NodeCtx);
+            }
+        }
+    }
+}
+
+static void MWCS_ValidateHierarchyPropertiesRecursive(
+    const FMWCS_HierarchyNode &Node,
+    UWidget *Widget,
+    FMWCS_Report &Report,
+    const FString &Context)
+{
+    if (!Widget)
+    {
+        return;
+    }
+    
+    // Validate this node's properties
+    MWCS_ValidateHierarchyNodeProperties(Node, Widget, Report, Context);
+    
+    // Recurse into children
+    TArray<UWidget *> ActualChildren;
+    MWCS_CollectWidgetChildrenForValidation(Widget, ActualChildren);
+    
+    const int32 CountToCompare = FMath::Min(Node.Children.Num(), ActualChildren.Num());
+    for (int32 i = 0; i < CountToCompare; ++i)
+    {
+        const FString ChildCtx = FString::Printf(TEXT("%s/Child[%d]"), *Context, i);
+        MWCS_ValidateHierarchyPropertiesRecursive(Node.Children[i], ActualChildren[i], Report, ChildCtx);
+    }
+}
+
+void FMWCS_WidgetValidator::ValidateHierarchyProperties(
+    const FMWCS_WidgetSpec &Spec,
+    UWidgetBlueprint *BP,
+    FMWCS_Report &InOutReport,
+    const FString &Context)
+{
+    if (!BP || !BP->WidgetTree || !BP->WidgetTree->RootWidget)
+    {
+        return;
+    }
+    
+    MWCS_ValidateHierarchyPropertiesRecursive(
+        Spec.HierarchyRoot,
+        BP->WidgetTree->RootWidget,
+        InOutReport,
+        Context + TEXT("::HierarchyProps"));
+}
+
+// ============================================================================
+// POST-GENERATION VALIDATION
+// ============================================================================
+
+bool FMWCS_WidgetValidator::ValidatePostGeneration(
+    const TArray<FMWCS_WidgetSpec> &Specs,
+    FMWCS_Report &InOutReport,
+    bool bLogSummary)
+{
+    if (bLogSummary)
+    {
+        UE_LOG(LogTemp, Display, TEXT("MWCS: Starting post-generation validation for %d widget(s)..."), Specs.Num());
+    }
+    
+    int32 PassCount = 0;
+    int32 FailCount = 0;
+    
+    for (const FMWCS_WidgetSpec &Spec : Specs)
+    {
+        FMWCS_Report SingleReport;
+        const bool bPassed = ValidateSpecAsset(Spec, SingleReport);
+        
+        // Merge issues into main report
+        InOutReport.Issues.Append(SingleReport.Issues);
+        
+        if (bPassed)
+        {
+            PassCount++;
+            if (bLogSummary)
+            {
+                UE_LOG(LogTemp, Display, TEXT("MWCS: [PASS] %s"), *Spec.BlueprintName.ToString());
+            }
+        }
+        else
+        {
+            FailCount++;
+            if (bLogSummary)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("MWCS: [FAIL] %s - %d issue(s)"), 
+                    *Spec.BlueprintName.ToString(), SingleReport.Issues.Num());
+                
+                // Log first 3 issues for quick debugging
+                for (int32 i = 0; i < FMath::Min(3, SingleReport.Issues.Num()); ++i)
+                {
+                    const FMWCS_Issue &Issue = SingleReport.Issues[i];
+                    UE_LOG(LogTemp, Warning, TEXT("       - [%s] %s: %s"), 
+                        *Issue.Code, *Issue.Context, *Issue.Message);
+                }
+            }
+        }
+    }
+    
+    if (bLogSummary)
+    {
+        UE_LOG(LogTemp, Display, TEXT("MWCS: Post-generation validation complete. Pass: %d, Fail: %d"), 
+            PassCount, FailCount);
+    }
+    
+    return FailCount == 0;
+}
+
+bool FMWCS_WidgetValidator::ValidateToolEuwPostGeneration(
+    const FMWCS_WidgetSpec &Spec,
+    FMWCS_Report &InOutReport,
+    const FString &OutputPath,
+    const FString &AssetName)
+{
+    const FString Context = FString::Printf(TEXT("%s/%s"), *OutputPath, *AssetName);
+    
+    UE_LOG(LogTemp, Display, TEXT("MWCS: Starting post-generation validation for Tool EUW '%s'..."), *AssetName);
+    
+    FAssetData AssetData;
+    if (!FindAssetData(OutputPath, AssetName, AssetData))
+    {
+        AddIssue(InOutReport, EMWCS_IssueSeverity::Error, TEXT("Validator.ToolEUW.MissingAsset"), 
+            FString::Printf(TEXT("Tool EUW asset does not exist: %s"), *AssetName), Context);
+        UE_LOG(LogTemp, Warning, TEXT("MWCS: [FAIL] Tool EUW '%s' - Asset not found"), *AssetName);
+        return false;
+    }
+    
+    UWidgetBlueprint *BP = Cast<UWidgetBlueprint>(AssetData.GetAsset());
+    if (!BP)
+    {
+        AddIssue(InOutReport, EMWCS_IssueSeverity::Error, TEXT("Validator.ToolEUW.WrongType"), 
+            TEXT("Asset is not a Widget Blueprint."), Context);
+        UE_LOG(LogTemp, Warning, TEXT("MWCS: [FAIL] Tool EUW '%s' - Wrong asset type"), *AssetName);
+        return false;
+    }
+    
+    // Validate hierarchy structure
+    if (BP->WidgetTree && BP->WidgetTree->RootWidget)
+    {
+        MWCS_ValidateHierarchyRecursive(Spec.HierarchyRoot, BP->WidgetTree->RootWidget, InOutReport, Context + TEXT("::Hierarchy"));
+        
+        // Validate hierarchy-level properties
+        ValidateHierarchyProperties(Spec, BP, InOutReport, Context);
+    }
+    else
+    {
+        AddIssue(InOutReport, EMWCS_IssueSeverity::Error, TEXT("Validator.ToolEUW.MissingWidgetTree"), 
+            TEXT("Tool EUW has no WidgetTree or RootWidget."), Context);
+    }
+    
+    // Validate Design section
+    for (const TPair<FName, TSharedPtr<FJsonObject>> &KV : Spec.Design)
+    {
+        if (KV.Key == NAME_None || !BP->WidgetTree)
+        {
+            continue;
+        }
+        
+        UWidget *Widget = BP->WidgetTree->FindWidget(KV.Key);
+        if (Widget)
+        {
+            MWCS_ValidateDesignForWidget(KV.Key, KV.Value, Widget, InOutReport, Context);
+        }
+    }
+    
+    const bool bPassed = !InOutReport.HasErrors();
+    if (bPassed)
+    {
+        UE_LOG(LogTemp, Display, TEXT("MWCS: [PASS] Tool EUW '%s' validation complete"), *AssetName);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("MWCS: [FAIL] Tool EUW '%s' - %d issue(s)"), 
+            *AssetName, InOutReport.Issues.Num());
+    }
+    
+    return bPassed;
 }
